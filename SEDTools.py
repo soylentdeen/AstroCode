@@ -9,15 +9,16 @@ spectralSlope - finds the spectral slope of an input spectrum.
 
 inputs
 ===========
-  - wl          - wavelength array
-  - flux        - flux array
-  - d_flux      - array of errors on flux points
-  - wl_start    - start of spectral region
-  - wl_stop     - stop of spectral region
-  - plt         - Gnuplot object
-  - strongLines - List of strong line centers to remove from consideration from the spectral slope
-  - lineWidths  - List of widths corresponding to the strong lines
+  - wl             - wavelength array
+  - flux           - flux array
+  - d_flux         - array of errors on flux points
+  - wl_start       - start of spectral region
+  - wl_stop        - stop of spectral region
+  - plt(*)         - Gnuplot object
+  - strongLines(*) - List of strong line centers to remove from consideration from the spectral slope
+  - lineWidths(*)  - List of widths corresponding to the strong lines
 
+(*) Optional
 output
 ===========
    - beta       - powelaw spectral slope
