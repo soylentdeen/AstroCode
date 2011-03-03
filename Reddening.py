@@ -1,5 +1,8 @@
 import numpy
 import scipy
+import SEDTools
+import scipy.optimize
+import Gnuplot
 
 def cttReddening(j, dj, h, dh, k, dk, **kwargs):
     xJ = 1.235
@@ -34,6 +37,8 @@ def cttReddening(j, dj, h, dh, k, dk, **kwargs):
 def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     xJ = 1.235
 
+    dwarfs = [-9.193, 0.1327]   # coefficients of best-fit line
+
     if ( 'beta' in kwargs):
         beta = kwargs['beta']
     else:
@@ -45,12 +50,25 @@ def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     strongLines = [1.1789, 1.1843, 1.1896, 1.1995, 1.282]
     lineWidths = [0.002, 0.002, 0.002, 0.003, 0.005]
 
-    bm = scipy.where( (wl > wlStart) & (wl < wlStop) )[0]
-    for line, width in zip(strongLines, lineWidths):
-        new_bm = scipy.where( abs(wl[bm]-line) > width)
-        bm = bm[new_bm[0]]
+    A_lambda = (wl/1.235)**(beta)
 
-    x = wl[bm]
-    y = flux[bm]
-    dy = dFlux[bm]
+    spt_beta = dwarfs[0] + dwarfs[1]*spt
 
+    aj_guess = 10.0
+    def fitfunc(Aj):
+        return flux*10.0**((Aj*A_lambda)/2.5)
+    def errfunc(Aj, beta):
+        new_beta = SEDTools.spectralSlope(wl, fitfunc(Aj), dFlux, wlStart, wlStop, beta, strongLines=strongLines,
+        lineWidths=lineWidths)
+        return abs(new_beta-beta)
+
+    error = errfunc(aj_guess, spt_beta)
+    aj_step = -2.0
+    while (error > 0.01):
+        aj_guess += aj_step
+        new_error = errfunc(aj_guess, spt_beta)
+        if (new_error > error):
+            aj_step *= -0.5
+        error = new_error
+
+    return aj_guess
