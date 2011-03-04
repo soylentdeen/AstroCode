@@ -37,7 +37,7 @@ def cttReddening(j, dj, h, dh, k, dk, **kwargs):
 def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     xJ = 1.235
 
-    dwarfs = [-9.193, 0.1327]   # coefficients of best-fit line
+    dwarfs = [20.6069, -0.84419, 0.007997]   # coefficients of best-fit line
 
     if ( 'beta' in kwargs):
         beta = kwargs['beta']
@@ -47,12 +47,12 @@ def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     wlStart = 1.1   # microns
     wlStop = 1.3    # microns
 
-    strongLines = [1.1789, 1.1843, 1.1896, 1.1995, 1.282]
-    lineWidths = [0.002, 0.002, 0.002, 0.003, 0.005]
+    strongLines = [1.13, 1.1789, 1.1843, 1.1896, 1.1995, 1.282]
+    lineWidths = [0.02, 0.002, 0.002, 0.002, 0.003, 0.005]
 
     A_lambda = (wl/1.235)**(beta)
 
-    spt_beta = dwarfs[0] + dwarfs[1]*spt
+    spt_beta = dwarfs[0] + dwarfs[1]*spt + dwarfs[2]*spt**2.0
 
     aj_guess = 10.0
     def fitfunc(Aj):
@@ -70,5 +70,15 @@ def spectralReddening(wl, flux, dFlux, spt, **kwargs):
         if (new_error > error):
             aj_step *= -0.5
         error = new_error
+
+    if ( 'plt' in kwargs):
+        plt = kwargs['plt']
+        bm = scipy.where( (wl > 1.1) & (wl < 1.105) )
+        norm = numpy.mean( fitfunc(aj_guess)[bm])
+        a = Gnuplot.Data(wl, fitfunc(aj_guess), with_='lines')
+        b = Gnuplot.Data(numpy.linspace(1.1,1.3), (norm*(numpy.linspace(1.1,1.3)/1.1)**(spt_beta)), with_='lines')
+        plt('set xrange [1.1:1.3]')
+        plt.plot(a, b)
+        raw_input()
 
     return aj_guess

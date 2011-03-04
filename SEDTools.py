@@ -26,7 +26,7 @@ output
 '''
 
 def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
-    bm = scipy.where( (wl > wlStart) & (wl < wlStop) )[0]
+    bm = scipy.where( (wl > wlStart) & (wl < wlStop) & numpy.isfinite(flux) )[0]
 
     if ( 'strongLines' in kwargs ):
        for line, width in zip(kwargs['strongLines'], kwargs['lineWidths']):
