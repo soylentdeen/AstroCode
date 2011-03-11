@@ -44,7 +44,7 @@ def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
     coeffs = [normalization, beta_guess]
     
     fitfunc = lambda p, x : p[0]*(x/wlStart)**(p[1])
-    errfunc = lambda p, x, z, dz: numpy.abs((fitfunc(p, x) - z)*dz)
+    errfunc = lambda p, x, z, dz: numpy.abs((fitfunc(p, x) - z)/dz)
     pfit = scipy.optimize.leastsq(errfunc, coeffs, args=(numpy.asarray(x, dtype=numpy.float64),
     numpy.asarray(y,dtype=numpy.float64), numpy.asarray(dy,dtype=numpy.float64)), full_output = 1)
 

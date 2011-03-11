@@ -37,7 +37,8 @@ def cttReddening(j, dj, h, dh, k, dk, **kwargs):
 def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     xJ = 1.235
 
-    dwarfs = [20.6069, -0.84419, 0.007997]   # coefficients of best-fit line
+    # coefficients of best-fit line
+    dwarfs = [5.13704021e-6, -8.56406004e-4, 5.20223133e-2, -1.31035703, 8.54199287]
 
     if ( 'beta' in kwargs):
         beta = kwargs['beta']
@@ -52,7 +53,7 @@ def spectralReddening(wl, flux, dFlux, spt, **kwargs):
 
     A_lambda = (wl/1.235)**(beta)
 
-    spt_beta = dwarfs[0] + dwarfs[1]*spt + dwarfs[2]*spt**2.0
+    spt_beta = numpy.polyval(dwarfs, spt)
 
     aj_guess = 10.0
     def fitfunc(Aj):
