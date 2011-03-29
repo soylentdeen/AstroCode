@@ -3,6 +3,7 @@ import scipy.interpolate
 import scipy.optimize
 import numpy
 import pyfits
+import string
 
 def resample(x, y, R):
     ''' This routine convolves a given spectrum to a resolution R'''
@@ -32,6 +33,18 @@ def resample(x, y, R):
     bm = numpy.isfinite(result)
     return newx[len(xk)/2.0:-len(xk)/2.0], result[bm]/normal[bm]
 
+
+def write_2col_spectrum(filename, wl, fl):
+    '''
+    Prints a spectrum to a two-column data file
+    '''
+
+    data = open(filename, 'w')
+
+    for line in zip(wl, fl):
+        data.write(str(line[0])+' '+str(line[1])+'\n')
+
+    data.close()
 
 def read_2col_spectrum(filename):
     '''
@@ -67,14 +80,53 @@ def read_fits_spectrum(filename):
 
     return (wl, fl, dfl)
 
-def fit_gaussians(x, y, linecenters, R):
+def read_IRAF_fits_spectrum(filename):
+    """ Reads in an echelle spectrum which has been reduced by IRAF """
+    hdulist = pyfits.open(filename, ignore_missing_end = True)
+    hdr = hdulist[0].header
+    dat = hdulist[0].data
+
+    "Finds the number of orders"
+    n_orders = int(hdr["NAXIS2"])
+    waveTable = hdr["WAT2*"]
+
+    "Strings together the wavelength conversion strings"
+    linear_header = ''
+    for tableEntry in waveTable:
+        linear_header += string.ljust(tableEntry.value, 68)
+
+    """
+    Extracts the coefficients necessary for the wavelength solution
+    for each order
+    """
+    wlsol = []
+    for sol in linear_header.split('spec')[2:]:
+        sol = sol.split()
+        wlsol.append([float(sol[5]), float(sol[6])])
+
+    """
+    Creates the wavelength solution for each pixel, and places it in a
+    parallel array.
+    """
+    orders = []
+    for i in range(len(dat[0])):
+        wl = numpy.arange(len(dat[0][i]))*wlsol[i][1]+wlsol[i][0]
+        orders.append([wl, dat[0][i]])
+
+    orders = numpy.array(orders)
+    return hdr, orders
+
+def fit_gaussians(x, y, linecenters, R, **kwargs):
 
     params = []
     strength = -0.05
-    for line in linecenters:
-        fwhm = line/R
-        params.append(strength)      #Strength
-        params.append(line)          #Line Center
+    for i in range(len(linecenters)):
+        fwhm = 0.05*linecenters[i]/R
+        if "strengthGuesses" in kwargs:
+            params.append(kwargs["strengthGuesses"][i])
+        else:
+            params.append(strength)      #Strength
+        params.append(linecenters[i])
         params.append(fwhm)          #FWHM
 
     def fitfunc(pars, xpts):
@@ -99,3 +151,56 @@ def fit_gaussians(x, y, linecenters, R):
             fit[j] += coeffs[k]*numpy.exp(-(x[j]-coeffs[k+1])**2.0/(coeffs[k+2]))
 
     return coeffs, fit
+
+def blackBody(**kwargs):
+    """ Returns a blackbody function over the given wavelength  """
+
+    """
+    inputs:
+        wl : wavelength array
+               Assumed to be in units of cm, unless specified by wlUnits kwarg
+
+        nu : frequency array
+               
+        T : Blackbody Temperature (K)
+
+        wlUnits: Units of wavelengths (Optional)
+               'Angstroms'
+               'nanometers'
+               'microns'
+               'cm'
+               'meters'
+        outUnits: cgs Units to output.
+               'Fnu'
+               'Flambda'
+               'Energy'
+
+    outputs:
+        y : Blackbody function.  Unit is assumed to be Flambda or Fnu (depnding on whether
+                wl or nu was given) unless overridden by outUnits kwarg
+    """
+    h = 6.626e-27
+    c = 2.998e10
+    k = 1.38e-16
+    T = kwargs["T"]
+
+    if "wl" in kwargs:
+        wl = kwargs["wl"]
+        c1 = 2.0*h*c**2.0
+        c2 = h*c/(k*T)
+        Flambda = c1/(wl**5.0*(numpy.exp(c2/wl)-1.0))
+        if "outUnits" in kwargs:
+            if kwargs["outUnits"] == "Energy":
+                return Flambda*wl
+        else:
+            return Flambda
+    elif "nu" in kwargs:
+        nu = kwargs["nu"]
+        c1 = 2.0*h/(c**2.0)
+        c2 = h/(k*T)
+        Fnu = c1*nu**2.0/(numpy.exp(c2*nu) - 1.0)
+        if "outUnits" in kwargs:
+            if kwargs["outUnits"] == "Energy":
+                return Fnu*nu
+        else:
+            return Fnu

@@ -25,6 +25,58 @@ output
    - dbeta      - 1 sigma error bar on beta
 '''
 
+def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
+    bm = scipy.where( (wl > wlStart) & (wl < wlStop) & numpy.isfinite(flux) )[0]
+    wl = wl[bm]
+    flux = flux[bm]
+    dFlux = dFlux[bm]
+
+    spectral_slope = spectralSlope(wl, flux, dFlux, wlStart, wlStop, 0.0, **kwargs)
+
+    #plt = kwargs['plt']
+    #plt('set xrange[*:*]')
+    
+    continuum = spectral_slope[0]*(wl/wlStart)**spectral_slope[1]
+    flat = flux/continuum
+
+    #first = Gnuplot.Data(wl, flat, with_='lines')
+
+    mn = numpy.mean(flat)
+    sig = numpy.std(flat)
+
+    first_pass = scipy.where( (flat > mn-sig) & (flat < mn+sig) )[0]
+
+    mn = numpy.mean(flat[first_pass])
+    sig = numpy.std(flat[first_pass])
+
+    second_pass = scipy.where( (flat > mn) & (flat < mn+sig) )[0]
+    spectral_slope = spectralSlope(wl[second_pass], flat[second_pass], dFlux[second_pass], wlStart, wlStop, 0.0,
+    **kwargs)
+
+    '''
+    while ( (abs(spectral_slope[1]) > 1e-3) & (len(second_pass) > 30) ):
+        continuum = spectral_slope[0]*(wl/wlStart)**spectral_slope[1]
+        flat = flat/continuum
+        cont = Gnuplot.Data(wl, continuum, with_='lines')
+        second = Gnuplot.Data(wl, flat, with_='lines')
+        pts = Gnuplot.Data(wl[second_pass], flat[second_pass])
+        mn = numpy.mean(flat[second_pass])
+        sig = numpy.std(flat[second_pass])
+        plt.plot(first, cont, second, pts)
+        second_pass = scipy.where( (flat> mn) & (flat < mn+sig) )[0]
+        spectral_slope = spectralSlope(wl[second_pass], flat[second_pass], dFlux[second_pass], wlStart, wlStop, 0.0, **kwargs)
+        raw_input()
+    '''
+
+    spline = scipy.interpolate.UnivariateSpline(wl[second_pass], flat[second_pass]+sig, s=500)
+    #sp = Gnuplot.Data(wl, spline(wl))
+    #plt.plot(first, sp)
+    #raw_input()
+    #continuum = (spectral_slope[0]+sig)*(wl/wlStart)**spectral_slope[1]
+    flat = flat/spline(wl)
+
+    return wl, flat
+
 def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
     bm = scipy.where( (wl > wlStart) & (wl < wlStop) & numpy.isfinite(flux) )[0]
 
@@ -39,7 +91,6 @@ def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
 
     normalization = y[0]
     z = normalization*(x/wlStart)**beta_guess
-    
 
     coeffs = [normalization, beta_guess]
     
@@ -53,5 +104,6 @@ def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
         guess = Gnuplot.Data(x, z, with_='lines')
         new = Gnuplot.Data(x, pfit[0][0]*(x/wlStart)**(pfit[0][1]), with_='lines')
         kwargs['plt'].plot(original, guess, new)
+        #raw_input()
 
-    return pfit[0][1]
+    return pfit[0]
