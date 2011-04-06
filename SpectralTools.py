@@ -1,6 +1,7 @@
 import scipy.signal
 import scipy.interpolate
 import scipy.optimize
+import scipy.integrate
 import numpy
 import pyfits
 import string
@@ -43,6 +44,18 @@ def write_2col_spectrum(filename, wl, fl):
 
     for line in zip(wl, fl):
         data.write(str(line[0])+' '+str(line[1])+'\n')
+
+    data.close()
+
+def write_MOOG_obs_spectrum(filename, wl, fl):
+    '''
+    Prints a spectrum to a two-column data file in a format useful for the MOOG spectral synthesis program.
+    '''
+
+    data = open(filename, 'w')
+
+    for d in zip(wl, fl):
+        data.write('%10f %9f\n' % (d[0], d[1]) )
 
     data.close()
 
@@ -204,3 +217,54 @@ def blackBody(**kwargs):
                 return Fnu*nu
         else:
             return Fnu
+
+
+class photometrySynthesizer( object ):
+    def __init__(self, **kwargs):
+        if "filterDir" in kwargs:
+            self.fdir = filter_dir
+        else:
+            self.fdir = '/home/deen/Data/StarFormation/Photometry/FILTER_PROFILES/'
+
+        filterNames = ['Uj', 'Bj', 'Vj', 'Rc', 'Ic', '2massj', '2massh', '2massk']
+        fileNames = ['U_Landolt.dat', 'B_Bessell.dat', 'V_Bessell.dat', 'cousins_Rband.dat', 'cousins_Iband.dat', 'J_2MASS.dat', 'H_2MASS.dat', 'K_2MASS.dat']
+        fnu_zero = [1829, 4144, 3544, 2950, 2280.0, 1594.0, 1024.0, 666.7 ]
+        flam_zero = [4.0274905e-09, 6.3170333e-09, 3.6186341e-09, 2.1651655e-9, 1.1326593e-09, 3.129e-10, 1.133e-10, 4.283e-11] #erg/s/cm^2/Angstrom
+        lambda_eff = [3600, 4362, 5446, 6413, 7978, 12285, 16385, 21521]
+        mVega = [0.02, 0.02, 0.03, 0.039, 0.035, -0.001, +0.019, -0.017]
+
+        self.photBands = []
+        for band in zip(filterNames, fileNames, fnu_zero, flam_zero, lambda_eff, mVega):
+            photBand = dict()
+            photBand['Name'] = band[0]
+            photBand['file'] = band[1]
+            photBand['fnu_zero'] = band[2]
+            photBand['flam_zero'] = band[3]
+            photBand['lambda_eff'] = band[4]
+            photBand['mVega'] = band[5]
+            
+            fx = []
+            fy = []
+            dat = open(self.fdir+band[1], 'r').read().split('\n')
+            for line in dat:
+                if len(line) > 0:
+                    l = line.split()
+                    fx.append(float(l[0])*1e4)
+                    fy.append(float(l[1]))
+            fy = numpy.array(fy)
+            fx = numpy.array(fx)
+            photBand['min_x'] = min(fx)
+            photBand['max_x'] = max(fx)
+            photBand['photSpline'] = scipy.interpolate.splrep(fx, fy)
+
+            self.photBands.append(photBand)
+    
+    def photFlux(self, x, y, filtName):
+        for band in self.photBands:
+            if band['Name'] == filtName:
+                bm = scipy.where( (x > band['min_x'] ) & (x < band['max_x']) )[0]
+                fnew = scipy.interpolate.splev(x[bm], band['photSpline'])
+                valid_bm = scipy.where( (fnew > 0.0) & (y[bm] > 0.0) )[0]
+                numerator = scipy.integrate.simps(y[bm][valid_bm]*fnew[valid_bm], x[bm][valid_bm])
+                denom = scipy.integrate.simps(fnew[valid_bm], x[bm][valid_bm])
+                return numerator/denom

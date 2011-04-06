@@ -17,6 +17,18 @@ def cttReddening(j, dj, h, dh, k, dk, **kwargs):
     # Slope of the T-Tauri Locus
     Mctts = 0.63046
 
+    # Beginning of the T-Tauri Locus - tied to M6 star
+    M6_VJ_BB = 6.27   # in Bessell and Brett photometric system
+    M6_VH_BB = 6.93
+    M6_VK_BB = 7.30
+    # Colors of M6 in 2MASS System (from Kenyon & Hartmann 1995)
+    M6_JH = (M6_VH_BB-M6_VJ_BB)*0.990 -0.049
+    M6_HK = (M6_VK_BB-M6_VH_BB)*0.971 +0.034
+    # Av = 1.9 (from Meyers 1997)
+    Av = 0.9
+    d_JH = Av*0.11
+    d_HK = Av*0.065
+    y_intercept = M6_JH + d_JH - Mctts*(M6_HK+d_HK)
     # Slope of the reddening vector
     Mred = (1.0-(xH/xJ)**beta)/((xH/xJ)**beta-(xK/xJ)**beta)
     
@@ -25,7 +37,7 @@ def cttReddening(j, dj, h, dh, k, dk, **kwargs):
     HK = h-k
 
     # Computes distance along reddening vector to the T-Tauri locus
-    y1 = Mctts*HK + 0.4968
+    y1 = Mctts*HK + y_intercept   # prev value = 0.4968
     x1 = (JH - y1)/(Mred - Mctts)
     denom = ( (xH/xJ)**beta - (xK/xJ)**beta)
     Aj = x1/denom
@@ -61,7 +73,7 @@ def spectralReddening(wl, flux, dFlux, spt, **kwargs):
     def errfunc(Aj, beta):
         new_beta = SEDTools.spectralSlope(wl, fitfunc(Aj), dFlux, wlStart, wlStop, beta, strongLines=strongLines,
         lineWidths=lineWidths)
-        return abs(new_beta-beta)
+        return abs(new_beta[1]-beta)
 
     error = errfunc(aj_guess, spt_beta)
     aj_step = -2.0
