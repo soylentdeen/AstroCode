@@ -30,6 +30,7 @@ def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
     wl = wl[bm]
     flux = flux[bm]
     dFlux = dFlux[bm]
+    errors = dFlux/flux
 
     spectral_slope = spectralSlope(wl, flux, dFlux, wlStart, wlStop, 0.0, **kwargs)
 
@@ -74,8 +75,10 @@ def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
     #raw_input()
     #continuum = (spectral_slope[0]+sig)*(wl/wlStart)**spectral_slope[1]
     flat = flat/spline(wl)
-
-    return wl, flat
+    if 'errors' in kwargs:
+        return wl, flat, errors
+    else:
+        return wl, flat
 
 def spectralSlope(wl, flux, dFlux, wlStart, wlStop, beta_guess, **kwargs):
     bm = scipy.where( (wl > wlStart) & (wl < wlStop) & numpy.isfinite(flux) )[0]
