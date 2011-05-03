@@ -19,8 +19,6 @@ def resample(x, y, R):
         stepsize = newx[-1]/(R*subsample)
         newx.append(newx[-1]+stepsize)
 
-    newx = numpy.array(newx)
-
     f = scipy.interpolate.interpolate.interp1d(x, y, bounds_error=False)
     newy = f(newx)
     const = numpy.ones(len(newx))
@@ -32,7 +30,7 @@ def resample(x, y, R):
     normal = scipy.signal.convolve(const, yk, mode = 'valid')
 
     bm = numpy.isfinite(result)
-    return newx[len(xk)/2.0:-len(xk)/2.0], result[bm]/normal[bm]
+    return newx[int(len(xk)/2.0):-int(len(xk)/2.0)], result[bm]/normal[bm]
 
 
 def write_2col_spectrum(filename, wl, fl):

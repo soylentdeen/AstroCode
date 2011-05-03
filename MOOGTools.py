@@ -76,18 +76,19 @@ class spectralSynthesizer( object ):
 
         self.temps = numpy.unique(temps)
         self.gravs = numpy.unique(gravs)
-        self.x_offsets = numpy.linspace(-8.5, -5, num = 20)      #wavelength offsets in angstroms
-        self.y_offsets = numpy.linspace(0.99, 1.02, num=22)   #continuum offsets in % of continuum
+        self.x_offsets = numpy.linspace(-10, 10, num = 21)  #wavelength offsets in angstroms
+        self.y_offsets = numpy.linspace(1.00, 1.025, num=3)   #continuum offsets in % of continuum
 
         self.temps.sort()
         self.gravs.sort()
 
-        self.coarse_t = self.temps[numpy.arange(0, len(self.temps), 6)]
-        #self.coarse_g = numpy.array([480])
-        self.coarse_g = self.gravs[numpy.arange(0, len(self.gravs), 6)]
-        self.coarse_xoff = self.x_offsets[numpy.arange(0, len(self.x_offsets), 3)]
-        self.coarse_yoff = numpy.array([1.0])
-        #self.coarse_yoff = self.y_offsets[numpy.arange(0, len(self.y_offsets), 4)]
+        self.coarse_t = numpy.arange(3900, 5400, 100)
+        #self.coarse_t = self.temps[numpy.arange(0, len(self.temps), 2)]
+        self.coarse_g = numpy.arange(300, 560, 20)
+        #self.coarse_g = self.gravs[numpy.arange(0, len(self.gravs), 2)]
+        self.coarse_xoff = self.x_offsets#[numpy.arange(0, len(self.x_offsets), 3)]
+        self.coarse_yoff = numpy.array([1.000])
+        #self.coarse_yoff = self.y_offsets#[numpy.arange(0, len(self.y_offsets), 4)]
 
     def getMARCSModels(self, fnum):
         filename = "feature_"+str(fnum)+"_models.pkl"
@@ -129,8 +130,9 @@ class spectralSynthesizer( object ):
 
 
     def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
-        for feat in self.features[2:]:
+        for feat in self.features:
             chisq = numpy.zeros([len(feat["TandG"][0]), len(self.x_offsets), len(self.y_offsets)])
+            minchisq = 1e10
             x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
             strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
             x_sm = feat["wl"]/10000.0     # convert MOOG wavelengths to microns
@@ -153,6 +155,12 @@ class spectralSynthesizer( object ):
                                 synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
                                 chisq[TandG_bm, xoff_bm, yoff_bm] = self.calcError(new_fl[overlap], synthetic_spectrum,
                                 z[overlap])
+                                if chisq[TandG_bm, xoff_bm, yoff_bm] < minchisq:
+                                    minchisq = chisq[TandG_bm, xoff_bm, yoff_bm]
+                                    print minchisq, T, G, fl_offset, wl_offset
+                                    obs = Gnuplot.Data(new_wl[overlap], new_fl[overlap], with_='lines')
+                                    syn = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
+                                    plt.plot(obs, syn)
 
             #chisq = numpy.array(chisq)
             coarse_points = chisq.nonzero()
@@ -176,14 +184,15 @@ class spectralSynthesizer( object ):
             print 'Wavelength Shift range: ', numpy.mean(wl_shift_ordered[bm]), ' +/- ', numpy.std(wl_shift_ordered[bm])
             print 'Continuum Scaling range: ', numpy.mean(cont_shift_ordered[bm]), ' +/- ', numpy.std(cont_shift_ordered[bm])
             print '1 sigma T range : ', 
-            for i in range(5):
+            for i in range(10):
                 new_wl = x_window+wl_shift_ordered[i]/10000.0
                 overlap = scipy.where( (new_wl > minx) & (new_wl < maxx))[0]
                 new_fl = flat*cont_shift_ordered[i]
                 y_sm = feat["models"][coarse_points[0][order[i]]]
                 synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
                 obs = Gnuplot.Data(new_wl[overlap], new_fl[overlap], with_='lines')
-                syn = Gnuplot.Data(x_sm, y_sm, with_='lines')
+                syn = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
                 plt.plot(obs, syn)
+                print wl_shift_ordered[i]
                 raw_input()
 
