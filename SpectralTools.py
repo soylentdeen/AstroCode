@@ -88,8 +88,10 @@ def read_fits_spectrum(filename):
     wl = dat[0]
     fl = dat[1]
     dfl = dat[2]
+    
+    bm = scipy.where( numpy.isfinite(fl) == True)
 
-    return (wl, fl, dfl)
+    return (wl[bm], fl[bm], dfl[bm])
 
 def read_IRAF_fits_spectrum(filename):
     """ Reads in an echelle spectrum which has been reduced by IRAF """
