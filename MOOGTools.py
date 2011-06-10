@@ -196,6 +196,15 @@ class spectralSynthesizer_HR( object ):   # High resolution
                 print wl_shift_ordered[i]
                 raw_input()
 
+class gridPoint( objecct ):    # Object which contains information about a Chi-Squared grid point
+    def __init__(self, **kwargs):
+        self.chisq = kwargs["chisq"]
+        self.T = kwargs["T"]
+        self.G = kwargs["G"]
+        self.B = kwargs["B"]
+        self.dx = kwargs["dx"]
+        self.dy = kwargs["dy"]
+
 class spectralSynthesizerCoarse( object ):   # low resolution
 
     def __init__(self):
@@ -204,15 +213,16 @@ class spectralSynthesizerCoarse( object ):   # low resolution
         xstop = [1.2100, 2.2112, 2.268]
         slope_start = [1.15, 2.100, 2.23]
         slope_stop = [1.25, 2.25, 2.29]
-        continuum = [[1.2015, 1.2025], [2.1922, 2.1975], [2.258, 2.26]]
         strongLines = [[2.166, 2.2066], [2.166, 2.2066], [2.263, 2.267]]
         lineWidths = [[0.005, 0.005],[0.005, 0.005], [0.005, 0.005]]
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG'
         self.features = []
 
-        for i in range(len(xstart)):
+        #for i in range(len(xstart)):
+        for i in [0,1]:
             feat = dict()
             print feat_num[i]
             feat["num"] = feat_num[i]
@@ -222,35 +232,12 @@ class spectralSynthesizerCoarse( object ):   # low resolution
             feat["slope_stop"] = slope_stop[i]
             feat["strongLines"] = strongLines[i]
             feat["lineWidths"] = lineWidths[i]
-            feat["continuum"] = continuum[i]                    # Problably don't need this anymore
-            feat["datadir"] = '/home/deen/Data/StarFormation/MOOG/features/feat_'+str(feat["num"])+'/MARCS_output/'
-            feat["models"], feat["wl"], feat["TandG"] = self.getMARCSModelsCoarse(feat["num"])
             feat["comparePoints"] = comparePoints[i]
             self.features.append(feat)
 
-        temps = numpy.array([])
-        gravs = numpy.array([])
-
-        for feat in self.features:
-            temps = numpy.append(temps, feat["TandG"][0])
-            gravs = numpy.append(gravs, feat["TandG"][1])
-
-        self.temps = numpy.unique(temps)
-        self.gravs = numpy.unique(gravs)
-        self.x_offsets = numpy.linspace(0, 0, num = 1)  #wavelength offsets in angstroms
-        self.y_offsets = numpy.linspace(0.99, 1.01, num=3)   #continuum offsets in % of continuum
-        self.veilings = numpy.linspace(0.0, 1.0, num=5)
-
-        self.temps.sort()
-        self.gravs.sort()
-
-        #self.coarse_t = numpy.arange(3900, 5400, 100)
-        #self.coarse_t = self.temps[numpy.arange(0, len(self.temps), 2)]
-        #self.coarse_g = numpy.arange(300, 560, 20)
-        #self.coarse_g = self.gravs[numpy.arange(0, len(self.gravs), 2)]
-        #self.coarse_xoff = self.x_offsets#[numpy.arange(0, len(self.x_offsets), 3)]
-        #self.coarse_yoff = numpy.array([1.000])
-        #self.coarse_yoff = self.y_offsets#[numpy.arange(0, len(self.y_offsets), 4)]
+        self.temps = numpy.array(range(2500, 4000, 100)+range(4000,6250, 250))
+        self.gravs = numpy.array(range(300, 600, 50))
+        self.bfields = numpy.array(range(0, 4.5, 0.5))
 
     def getMARCSModelsCoarse(self, fnum):
         filename = "/home/deen/Code/python/StarFormation/MOOG/fit/feature_"+str(fnum)+"_models_coarse.pkl"
@@ -258,9 +245,9 @@ class spectralSynthesizerCoarse( object ):   # low resolution
         data = pickle.load(open(filename) )
         models = data[0][0]
         wl = data[0][1]
-        TandG = numpy.array(data[0][2])
+        TandGandB = numpy.array(data[0][2])
 
-        return models, wl, TandG
+        return models, wl, TandGandB
 
     def binMOOGSpectrum(self, spectrum, native_wl, new_wl):
         retval = numpy.zeros(len(new_wl))
@@ -297,42 +284,192 @@ class spectralSynthesizerCoarse( object ):   # low resolution
         return error/len(y1[bm])
 
 
+    def findWavelengthShift(self, x_window, flat, x_sm, y_sm):
+        orig_bm = scipy.where( (x_window > min(x_sm)) & (x_window < max(x_sm)) )[0]
+        feature_x = x_window[orig_bm]
+        model = scipy.interpolate.interpolate.interp1d(x_sm, y_sm, kind = 'linear', bounds_error = False)
+        ycorr = scipy.correlate((1.0-flat[orig_bm]), (1.0-model(feature_x)), mode ='full')
+        xcorr = scipy.linspace(0, len(ycorr)-1, num=len(ycorr))
+
+        fitfunc = lambda p, x: p[0]*scipy.exp(-(x-p[1])**2/(2.0*p[2]**2)) + p[3]
+        errfunc = lambda p, x, y: fitfunc(p, x) - y
+        
+        x_zoom = xcorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
+        y_zoom = ycorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
+        
+        p_guess = [ycorr[len(ycorr)/2], len(ycorr)/2, 3.0, 0.0001]
+        p1, success = scipy.optimize.leastsq(errfunc, p_guess, args = (x_zoom, y_zoom))
+        
+        fit = p1[0]*scipy.exp(-(x_zoom- p1[1])**2/(2.0*p1[2]**2)) + p1[3]
+        
+        xcorr = p1[1]
+        nLags = xcorr-(len(orig_bm)-1)
+        offset_computed = nLags*(feature_x[0]-feature_x[1])
+        if abs(offset_computed) > 20:
+            offset_computed = 0
+            
+        return offset_computed
+
+    def calcVeiling(self, y_obs, y_calc, x, comparePoints):
+        bm = []
+        for region in comparePoints:
+            bm.extend(scipy.where( (x > region[0]) & (x <region[1]) )[0])
+            
+        rk_guess = [0.01]
+        ff = lambda p, y_c: (y_c+p[0])/(abs(p[0])+1.0)
+        ef = lambda p, y_c, y_o: ff(p, y_c)-y_o
+        veil, success = scipy.optimize.leastsq(ef, rk_guess, args = (y_calc[bm], y_obs[bm]))
+        
+        return, veil[0]
+
+    def interpolatedModel(self, T, G, B):
+        #choose bracketing temperatures
+        if not(T in self.temps):
+            Tlow = max(self.temps[scipy.where(self.temps < T)])
+            Thigh = min(self.temps[scipy.where(self.temps > T)])
+        else:
+            Tlow = Thigh = T
+
+        #choose bracketing surface gravities
+        if not(G in self.gravs):
+            Glow = max(self.gravs[scipy.where(self.gravs < G)])
+            Ghigh = min(self.gravs[scipy.where(self.gravs > G)])
+        else:
+            Glow = Ghigh = G
+
+        #choose bracketing B-fields
+        if not(B in self.bfields):
+            Blow = max(self.bfields[scipy.where(self.bfields < B)])
+            Bhigh  = min(self.bfields[scipy.where(self.bfields > B)])
+        else:
+            Blow = Bhigh = B
+
+        #interpolate 
+        y1 = self.readMOOGModel(Tlow, Glow, Blow)
+        y2 = self.readMOOGModel(Thigh, Glow, Blow)
+        y3 = self.readMOOGModel(Tlow, Ghigh, Blow)
+        y4 = self.readMOOGModel(Thigh, Ghigh, Blow)
+        y5 = self.readMOOGModel(Tlow, Glow, Bhigh)
+        y6 = self.readMOOGModel(Thigh, Glow, Bhigh)
+        y7 = self.readMOOGModel(Tlow, Ghigh, Bhigh)
+        y8 = self.readMOOGModel(Thigh, Ghigh, Bhigh)
+
+        new_y = numpy.zeros(len(y1))
+        for i in range(len(y1)):
+            y12 = scipy.interpolate.interp1d([Tlow, Thigh], [y1[i], y2[i]])(T)
+            y34 = scipy.interpolate.interp1d([Tlow, Thigh], [y3[i], y4[i]])(T)
+            y56 = scipy.interpolate.interp1d([Tlow, Thigh], [y5[i], y6[i]])(T)
+            y78 = scipy.interpolate.interp1d([Tlow, Thigh], [y7[i], y8[i]])(T)
+            y1234 = scipy.interpolate.interp1d([Glow, Ghigh], [y12, y34])(G)
+            y5678 = scipy.interpolate.interp1d([Glow, Ghigh], [y56, y78])(G)
+            new_y[i] scipy.interpolate.interp1d([Blow, Bhigh], [y1234, y5678])(B)
+
+        return new_y
+
+    def calcPartialDerivatives(self, feat, coordinates, x_obs, flat, z, x_sm, y_old):
+        T=coordinates[-1]["T"]
+        G=coordinates[-1]["G"]
+        B=coordinates[-1]["B"]
+        dx=coordinates[-1]["dx"]
+        dy=coordinates[-1]["dy"]
+        r=coordinates[-1]["r"]
+        
+        if (T[-1] < 5950):
+            if (T[-1] <= 3850):
+                dT = 50.0
+            else:
+                if (G <= 500):
+                    dT = 50.0
+                else:
+                    dT = -50.0
+        else:
+            dT = -50.0
+            
+        # Calculate the dT partial derivative
+        y_new = self.interpolatedModel(T[i]+dT, G, B)
+        new_wl = x_obs+dx
+        overlap = scipy.where( (new_wl > minx) & (new_wl < maxx) )[0]
+        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
+        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap], feat["comparePoints"]))
+        T.append(T[-1]+dT)
+        G.append(G[-1])
+        B.append(B[-1])
+        dx.append(dx[-1])
+        dy.append(dy[-1])
+        r.append(r[-1])
+        
+        if (G[-1] <= 475):
+            dG = 25.0
+        else:
+            if ((T[-1] <= 3900) & (G[-1] < 525)):
+                dG = 25.0
+            else:
+                dG = -25.0
+
+        # Calculate the dG partial derivative
+        y_new = self.interpolatedModel(T, G+dG, B)
+
+        if (B < 3.75):
+            dB = 0.25
+        else:
+            dB = -0.25
+
+        # Calculate the dB partial derivative
+        y_new = self.interpolatedModel(models, T, G, B+dB)
+
+        d_dx = 0.001
+
+        # Calculate the d_dx partial derivative
+        d_dy = 0.001
+
+        # Calculate the d_dy partial derivative
+        
+        dr = 0.05
+
+        # Calculate the dr partial derivative
+        
+	
     def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
         for feat in self.features:
             if ( min(wl) < feat["xstart"] ):
-                chisq = numpy.zeros([len(feat["TandG"][0]), len(self.x_offsets), len(self.y_offsets), len(self.veilings)])
+                #chisq = numpy.zeros([len(feat["TandGandB"][0]), len(self.x_offsets), len(self.y_offsets), len(self.veilings)])
+                coordinates = []
+		
                 minchisq = 1e10
                 x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
                 strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
                 x_sm = feat["wl"]/10000.0     # convert MOOG wavelengths to microns
                 minx = min(x_sm)
                 maxx = max(x_sm)
-
-                TandG_bm = scipy.where( (feat["TandG"][0] == 4000.0) & (feat["TandG"][1] == 400.0) )[0]
-                y_sm = feat["models"][TandG_bm]
-                orig_bm = scipy.where( (x_window > min(x_sm)) & (x_window < max(x_sm)) )[0]
-                feature_x = x_window[orig_bm]
-                model = scipy.interpolate.interpolate.interp1d(x_sm, y_sm, kind = 'linear', bounds_error = False)
-                ycorr = scipy.correlate((1.0-flat[orig_bm]), (1.0-model(feature_x)), mode ='full')
-                xcorr = scipy.linspace(0, len(ycorr)-1, num=len(ycorr))
-
-                fitfunc = lambda p, x: p[0]*scipy.exp(-(x-p[1])**2/(2.0*p[2]**2)) + p[3]
-                errfunc = lambda p, x, y: fitfunc(p, x) - y
-
-                x_zoom = xcorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
-                y_zoom = ycorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
-                p_guess = [ycorr[len(ycorr)/2], len(ycorr)/2, 3.0, 0.0001]
-                p1, success = scipy.optimize.leastsq(errfunc, p_guess, args = (x_zoom, y_zoom))
-
-                fit = p1[0]*scipy.exp(-(x_zoom- p1[1])**2/(2.0*p1[2]**2)) + p1[3]
-
-                xcorr = p1[1]
-                nLags = xcorr-(len(orig_bm)-1)
-                offset_computed = nLags*(feature_x[0]-feature_x[1])
-                if abs(offset_computed) > 20:
-                    offset_computed = 0
-
-
+                
+                #Computes Chi-Squared for the initial guess
+                T_initial_guess = 4000.0
+                G_initial_guess = 400.0
+                B_initial_guess = 1.0
+                dy_initial_guess = 1.0
+                
+                T_guess = T_initial_guess
+                G_guess = G_initial_guess
+                B_guess = B_initial_guess
+                y_sm = interpolateModel(T_guess, G_guess, B_guess)
+                
+                dy_guess = dy_initial_guess
+                dx_guess = self.findWavelengthShift(x_window, flat, x_sm, y_sm)
+                
+                #Calculate the initial guess for the wavelength shift
+                new_wl = x_window+dx_guess
+                overlap = scipy.where( (new_wl > minx) & (new_wl < maxx) )[0]
+                
+                synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
+                
+                #Calculate the initial guess for the veiling
+                r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
+                coordinates.append(gridPoint(T=T_guess, G=G_guess, B=B_guess, dx=dx_guess, dy=dy_guess, r=r_initial_guess, chisq=self.calcError(flat[overlap], (synthetic_spectrum+r_initial_guess)/(r_initial_guess+1.0), z[overlap], new_wl[overlap], feat["comparePoints"])))
+                
+                #Calculate the partial derivatives
+                partials = self.calcPartialDerivatives(coordinates, x_window, flat, x_sm, y_sm)
+                
+                
                 for wl_offset in self.x_offsets:
                     print wl_offset
                     new_wl = x_window+(wl_offset/10000.0+offset_computed)       #microns
