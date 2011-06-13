@@ -38,164 +38,6 @@ def write_parfile(filename, **kwargs):
     
     df.close()
 
-class spectralSynthesizer_HR( object ):   # High resolution 
-
-    def __init__(self):
-        feat_num = [2, 57, 8]
-        xstart = [1.190, 2.170, 2.260]
-        xstop = [1.2100, 2.2112, 2.268]
-        slope_start = [1.15, 2.100, 2.23]
-        slope_stop = [1.25, 2.25, 2.29]
-        continuum = [[1.2015, 1.2025], [2.1922, 2.1975], [2.258, 2.26]]
-        strongLines = [[2.166, 2.2066], [2.166, 2.2066], [2.263, 2.267]]
-        lineWidths = [[0.005, 0.005],[0.005, 0.005], [0.005, 0.005]]
-
-        self.features = []
-
-        for i in range(len(xstart)):
-            feat = dict()
-            print feat_num[i]
-            feat["num"] = feat_num[i]
-            feat["xstart"] = xstart[i]
-            feat["xstop"] = xstop[i]
-            feat["slope_start"] = slope_start[i]
-            feat["slope_stop"] = slope_stop[i]
-            feat["strongLines"] = strongLines[i]
-            feat["lineWidths"] = lineWidths[i]
-            feat["continuum"] = continuum[i]                    # Problably don't need this anymore
-            feat["datadir"] = '/home/deen/Data/StarFormation/MOOG/features/feat_'+str(feat["num"])+'/MARCS_interpolated/'
-            feat["models"], feat["wl"], feat["TandG"] = self.getMARCSModels(feat["num"])
-            self.features.append(feat)
-
-        temps = numpy.array([])
-        gravs = numpy.array([])
-
-        for feat in self.features:
-            temps = numpy.append(temps, feat["TandG"][0])
-            gravs = numpy.append(gravs, feat["TandG"][1])
-
-        self.temps = numpy.unique(temps)
-        self.gravs = numpy.unique(gravs)
-        self.x_offsets = numpy.linspace(-10, 10, num = 21)  #wavelength offsets in angstroms
-        self.y_offsets = numpy.linspace(1.00, 1.025, num=3)   #continuum offsets in % of continuum
-
-        self.temps.sort()
-        self.gravs.sort()
-
-        self.coarse_t = numpy.arange(3900, 5400, 100)
-        #self.coarse_t = self.temps[numpy.arange(0, len(self.temps), 2)]
-        self.coarse_g = numpy.arange(300, 560, 20)
-        #self.coarse_g = self.gravs[numpy.arange(0, len(self.gravs), 2)]
-        self.coarse_xoff = self.x_offsets#[numpy.arange(0, len(self.x_offsets), 3)]
-        self.coarse_yoff = numpy.array([1.000])
-        #self.coarse_yoff = self.y_offsets#[numpy.arange(0, len(self.y_offsets), 4)]
-
-    def getMARCSModels(self, fnum):
-        filename = "feature_"+str(fnum)+"_models.pkl"
-
-        data = pickle.load(open(filename) )
-        models = data[0][0]
-        wl = data[0][1]
-        TandG = data[0][2]
-
-        return models, wl, TandG
-
-    def binMOOGSpectrum(self, spectrum, native_wl, new_wl):
-        retval = numpy.zeros(len(new_wl))
-        for i in range(len(new_wl)-1):
-            bm = scipy.where( (native_wl > new_wl[i]) & (native_wl <= new_wl[i+1]) )[0]
-            if (len(bm) > 0):
-                num = scipy.integrate.simps(spectrum[bm], x=native_wl[bm])
-                denom = max(native_wl[bm]) - min(native_wl[bm])
-                retval[i] = num/denom
-            else:
-                retval[i] = retval[-1]
-
-        bm = scipy.where (native_wl > new_wl[-1])
-        num = scipy.integrate.simps(spectrum[bm], x=native_wl[bm])
-        denom = max(native_wl[bm]) - min(native_wl[bm])
-        retval[-1] = num/denom
-
-        return retval
-
-    def calcError(self, y1, y2, z):
-        error = 0.0
-        #obs = Gnuplot.Data(x, y1, with_='lines')
-        #new = Gnuplot.Data(x, y2, with_='lines')
-        #plt.plot(obs, new)
-        for dat in zip(y1, y2, z):
-            error += ((dat[0]-dat[1])/dat[2])**2
-            
-        return error/len(y1)
-
-
-    def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
-        for feat in self.features:
-            chisq = numpy.zeros([len(feat["TandG"][0]), len(self.x_offsets), len(self.y_offsets)])
-            minchisq = 1e10
-            x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
-            strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
-            x_sm = feat["wl"]/10000.0     # convert MOOG wavelengths to microns
-            minx = min(x_sm)
-            maxx = max(x_sm)
-            for wl_offset in self.coarse_xoff:
-                print wl_offset
-                new_wl = x_window+wl_offset/10000.0       #microns
-                overlap = scipy.where( (new_wl > minx) & (new_wl < maxx))[0]
-                xoff_bm = scipy.where(self.x_offsets == wl_offset)[0]
-                for fl_offset in self.coarse_yoff:
-                    new_fl = flat*fl_offset
-                    print fl_offset
-                    yoff_bm = scipy.where(self.y_offsets == fl_offset)[0]
-                    for T in self.coarse_t:
-                        for G in self.coarse_g:
-                            TandG_bm = scipy.where( (feat["TandG"][0] == T) & (feat["TandG"][1] == G) )[0]
-                            if len(TandG_bm) > 0:
-                                y_sm = feat["models"][TandG_bm]
-                                synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
-                                chisq[TandG_bm, xoff_bm, yoff_bm] = self.calcError(new_fl[overlap], synthetic_spectrum,
-                                z[overlap])
-                                if chisq[TandG_bm, xoff_bm, yoff_bm] < minchisq:
-                                    minchisq = chisq[TandG_bm, xoff_bm, yoff_bm]
-                                    print minchisq, T, G, fl_offset, wl_offset
-                                    obs = Gnuplot.Data(new_wl[overlap], new_fl[overlap], with_='lines')
-                                    syn = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
-                                    plt.plot(obs, syn)
-
-            #chisq = numpy.array(chisq)
-            coarse_points = chisq.nonzero()
-            coarse_chisq = chisq[coarse_points]
-            order = numpy.argsort(coarse_chisq)
-            chisq_ordered = coarse_chisq[order]
-            T_ordered = numpy.array(feat["TandG"][0])[coarse_points[0][order]]
-            G_ordered = numpy.array(feat["TandG"][1])[coarse_points[0][order]]
-            wl_shift_ordered = self.x_offsets[coarse_points[1][order]]
-            cont_shift_ordered = self.y_offsets[coarse_points[2][order]]
-            print 'Minimum Chi-Squared : ', chisq_ordered[0:50]
-            print 'Best-Fit Tempertures : ', T_ordered[0:50]
-            print 'Best-Fit Surface Gravities : ', G_ordered[0:50]
-            print 'Best-Fit Continuum Shift : ', cont_shift_ordered[0:50]
-            print 'Best-Fit Wavelength Shift : ', wl_shift_ordered[0:50]
-            mn_chisq = min(chisq_ordered)
-            print 'Min Chi-squared : ', mn_chisq
-            bm = scipy.where( (chisq_ordered - mn_chisq) < mn_chisq)[0]
-            print 'Temperature range: ', numpy.mean(T_ordered[bm]), ' +/- ', numpy.std(T_ordered[bm])
-            print 'Surface Gravity range: ', numpy.mean(G_ordered[bm]), ' +/- ', numpy.std(G_ordered[bm])
-            print 'Wavelength Shift range: ', numpy.mean(wl_shift_ordered[bm]), ' +/- ', numpy.std(wl_shift_ordered[bm])
-            print 'Continuum Scaling range: ', numpy.mean(cont_shift_ordered[bm]), ' +/- ', numpy.std(cont_shift_ordered[bm])
-            print '1 sigma T range : ', 
-            for i in range(10):
-                new_wl = x_window+wl_shift_ordered[i]/10000.0
-                overlap = scipy.where( (new_wl > minx) & (new_wl < maxx))[0]
-                new_fl = flat*cont_shift_ordered[i]
-                y_sm = feat["models"][coarse_points[0][order[i]]]
-                synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
-                obs = Gnuplot.Data(new_wl[overlap], new_fl[overlap], with_='lines')
-                syn = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
-                plt.plot(obs, syn)
-                print wl_shift_ordered[i]
-                raw_input()
-
 class gridPoint( object ):    # Object which contains information about a Chi-Squared grid point
     def __init__(self, **kwargs):
         self.chisq = kwargs["chisq"]
@@ -207,7 +49,6 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
         self.r = kwargs["r"]
 
 class spectralSynthesizer( object ):   # low resolution
-
     def __init__(self):
         feat_num = [12, 57, 8]
         xstart = [1.190, 2.170, 2.260]
@@ -219,7 +60,7 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.features = []
 
         #for i in range(len(xstart)):
@@ -390,6 +231,7 @@ class spectralSynthesizer( object ):   # low resolution
         else:
             return x_sm, y_sm
 
+    '''
     def traverseDescentVector(self, coordinates, x_obs, flat, z, vosd, **kwargs):
         index = -1
         x_sm = self.features[self.currFeat]["wl"]
@@ -426,7 +268,82 @@ class spectralSynthesizer( object ):   # low resolution
             fit = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+r)/(r+1.0), with_='lines')
             obs = Gnuplot.Data(new_wl[overlap], flat[overlap], with_='lines')
             kwargs["plot"].plot(fit, obs)
+    '''
 
+    def computeS(self, coords):
+        #Coords[0] = T
+        #Coords[1] = G
+        #Coords[2] = B
+        #Coords[3] = dx
+        #Coords[4] = dy
+        #Coords[5] = r
+        x_sm = self.features[self.currFeat]["wl"]
+        y_new = self.interpolatedModel(coords[0], coords[1], coords[2])
+        
+        new_wl = self.x_window + coords[3]
+        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
+
+        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coords[4]
+        return self.calcError(self.flat[overlap], (synthetic_spectrum+coords[5])/(coords[5]+1.0), self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+    
+    def computeDeriv(self, coords, index):
+        newCoords = coords
+        newCoords[index] += self.delta[index]
+        S1 = self.computeS(newCoords)
+
+        newCoords[index] -= 2.0*self.delta[index]
+        S2 = self.computeS(newCoords)
+
+        return (S1-S2)/(2*self.delta[index])
+
+    def compute2ndDeriv(self, coords, i, j):
+        newCoords = coords
+        if( i == j ):
+            S2 = self.computeS(newCoords)
+            newCoords[i] += self.delta[i]
+            S1 = self.computeS(newCoords)
+            newCoords[i] -= 2*self.delta[i]
+            S3 = self.computeS(newCoords)
+            return (S1-2*S2+S3)/(self.delta[i]*self.delta[i])
+        else:
+            newCoords[i] += self.delta[i]
+            newCoords[j] += self.delta[j]
+            S1 = self.computeS(newCoords)
+
+            newCoords[i] -= 2.0*self.delta[i]
+            S2 = self.computeS(newCoords)
+
+            newCoords[j] -= 2.0*self.delta[j]
+            S4 = self.computeS(newCoords)
+
+            newCoords[i] += self.delta[i]
+            S3 = self.computeS(newCoords)
+
+            return (S1 - S2 - S3 + S4)/(4*self.delta[i]*self.delta[j])
+
+    def computeGradient(self, coordinates, x_obs, flat, z, y_old):
+        x_sm = self.features[self.currFeat]["wl"]
+
+        G = numpy.zeros(len(coordinates))
+
+        for i in range(len(coordinates)):
+            G[i] = self.computeDeriv(coodinates, i)
+
+        return G
+
+    def computeHessian(self, coordinates, x_obs, flat, z, y_old):
+        x_sm = self.features[self.currFeat]["wl"]
+        
+        H = numpy.zeros([6, 6])
+
+        for i in range(len(coordinates)):
+            for j in range(len(coordinates)):
+                H[i,j] = compute2ndDeriv(coordinates, i, j)
+
+        return H
+
+       
+    '''
     def calcDescentVector(self, coordinates, x_obs, flat, z, y_old):
         x_sm = self.features[self.currFeat]["wl"]
         if (len(coordinates) == 1):
@@ -501,7 +418,6 @@ class spectralSynthesizer( object ):   # low resolution
         B_step = -(chisqB-old_chisq)/(fB*dB)
         coordinates.append(gridPoint(chisq=chisqB, T=T, G=G, B=B+dB, dx=dx, dy=dy, r=r))
 
-        '''
         # Calculate the d_dx partial derivative
         new_wl = x_obs+dx+d_dx
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
@@ -534,7 +450,7 @@ class spectralSynthesizer( object ):   # low resolution
 
         vector_of_steepest_descent = {"T":T_step*dT/(L), "G":G_step*dG/(L), "B":B_step*dB/(L),
         "dx":dx_step*d_dx/(L),"dy":dy_step*d_dy/(L), "r":r_step*dr/(L)}
-        '''
+        
 
         L = ( T_step**2.0 + G_step**2.0 + B_step**2.0 )**0.5
 
@@ -545,6 +461,7 @@ class spectralSynthesizer( object ):   # low resolution
         raw_input()
 
         return vector_of_steepest_descent
+    '''
 	
     def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
         for feat, num in zip(self.features, range(len(self.features))):
@@ -560,6 +477,10 @@ class spectralSynthesizer( object ):   # low resolution
                 
                 x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
                 strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
+
+                self.x_window = x_window
+                self.flat = flat
+                self.z = z
                 
                 T_guess = T_initial_guess
                 G_guess = G_initial_guess
@@ -580,9 +501,16 @@ class spectralSynthesizer( object ):   # low resolution
                 synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
                 
                 #Calculate the initial guess for the veiling
-                #r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
-                r_initial_guess = 0.0
-                coordinates.append(gridPoint(T=T_guess, G=G_guess, B=B_guess, dx=dx_guess, dy=dy_guess, r=r_initial_guess, chisq=self.calcError(flat[overlap], (synthetic_spectrum+r_initial_guess)/(r_initial_guess+1.0), z[overlap], new_wl[overlap], feat["comparePoints"])))
+                r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
+                #r_initial_guess = 0.0
+
+                coordinates.append([T_guess, G_guess, B_guess, dx_guess, dy_guess, r_initial_guess])
+                chisq = self.computeS(coordinates[-1])
+
+                print chisq
+
+                print asdf
+                #coordinates.append(gridPoint(T=T_guess, G=G_guess, B=B_guess, dx=dx_guess, dy=dy_guess, r=r_initial_guess, chisq=self.calcError(flat[overlap], (synthetic_spectrum+r_initial_guess)/(r_initial_guess+1.0), z[overlap], new_wl[overlap], feat["comparePoints"])))
                 old_chisq = coordinates[-1].chisq
 
                 turns = 0   #Keeps track of how many changes of direction
