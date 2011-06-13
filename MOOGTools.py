@@ -448,7 +448,7 @@ class spectralSynthesizer( object ):   # low resolution
         d_dy = 0.0001
         dr = 0.005
 
-        fT=fG=fB=0.01
+        fT=fG=fB=1.0
         fdx=fdy=fr=0.5
         
         # Calculate the dT partial derivative
@@ -467,10 +467,10 @@ class spectralSynthesizer( object ):   # low resolution
         new_wl = x_obs+dx
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
+        chisqT = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
         self.features[self.currFeat]["comparePoints"])
-        T_step = -(chisq-old_chisq)/(fT*dT)
-        coordinates.append(gridPoint(chisq=chisq, T=T+dT, G=G, B=B, dx=dx, dy=dy, r=r))
+        T_step = -(chisqT-old_chisq)/(fT*dT)
+        coordinates.append(gridPoint(chisq=chisqT, T=T+dT, G=G, B=B, dx=dx, dy=dy, r=r))
         
         # Calculate the dG partial derivative
         if (G <= 500-dG):
@@ -483,10 +483,10 @@ class spectralSynthesizer( object ):   # low resolution
 
         y_new = self.interpolatedModel(T, G+dG, B)
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
+        chisqG = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
         self.features[self.currFeat]["comparePoints"])
-        G_step = -(chisq-old_chisq)/(fG*dG)
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G+dG, B=B, dx=dx, dy=dy, r=r))
+        G_step = -(chisqG-old_chisq)/(fG*dG)
+        coordinates.append(gridPoint(chisq=chisqG, T=T, G=G+dG, B=B, dx=dx, dy=dy, r=r))
 
         # Calculate the dB partial derivative
         if (B < 4.0-dB):
@@ -496,11 +496,12 @@ class spectralSynthesizer( object ):   # low resolution
 
         y_new = self.interpolatedModel(T, G, B+dB)
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
+        chisqB = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
         self.features[self.currFeat]["comparePoints"])
-        B_step = -(chisq-old_chisq)/(fB*dB)
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G, B=B+dB, dx=dx, dy=dy, r=r))
+        B_step = -(chisqB-old_chisq)/(fB*dB)
+        coordinates.append(gridPoint(chisq=chisqB, T=T, G=G, B=B+dB, dx=dx, dy=dy, r=r))
 
+        '''
         # Calculate the d_dx partial derivative
         new_wl = x_obs+dx+d_dx
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
@@ -533,10 +534,15 @@ class spectralSynthesizer( object ):   # low resolution
 
         vector_of_steepest_descent = {"T":T_step*dT/(L), "G":G_step*dG/(L), "B":B_step*dB/(L),
         "dx":dx_step*d_dx/(L),"dy":dy_step*d_dy/(L), "r":r_step*dr/(L)}
+        '''
 
+        L = ( T_step**2.0 + G_step**2.0 + B_step**2.0 )**0.5
+
+        vector_of_steepest_descent = {"T":T_step*dT/(L), "G":G_step*dG/(L), "B":B_step*dB/(L), "dx":0.0, "dy":0.0,
+        "r":0.0}
         print vector_of_steepest_descent
         print L
-        #raw_input()
+        raw_input()
 
         return vector_of_steepest_descent
 	
@@ -552,8 +558,6 @@ class spectralSynthesizer( object ):   # low resolution
                 B_initial_guess = 1.0
                 dy_initial_guess = 1.0
                 
-		
-                minchisq = 1e10
                 x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
                 strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
                 
