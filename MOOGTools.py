@@ -413,7 +413,7 @@ class spectralSynthesizer( object ):   # low resolution
                             Tval.append(T)
                             Gval.append(G)
                             Bval.append(B)
-                            out.write('%10.3f %10.3f %10.3f %10.4e %10.3f %10.3f\n' % (T,G,B,x_offset,veiling[-1], S[-1]) )
+                            out.write('%10.3f %10.3f %10.3f %10.4e %10.4e %10.3e\n' % (T,G,B,x_offset,veiling[-1], S[-1]) )
 
             out.close()
             
