@@ -60,11 +60,13 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
+        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
         self.delta = numpy.array([200.0, 50.0, 0.5, 0.000001, 0.01, 0.05])    # [dT, dG, dB, d_dx, d_dy, dr]
         self.delta_factor = 1.0
+        self.limits = [[2500, 6000], [300, 500], [0.0,4.0], [-10, 10], [-10, 10], [0, 10]]
         self.features = []
+
 
         #for i in range(len(xstart)):
         for i in [0,1]:
@@ -269,30 +271,42 @@ class spectralSynthesizer( object ):   # low resolution
 
     def compute2ndDeriv(self, coords, i, j):
         if( i == j ):
+            ifactor = 1.0
+            while (((coords[i] - self.delta[i]*ifactor) < self.limits[i][0]) | ((coords[i]+self.delta[i]*ifactor) >
+            self.limits[i][1])):
+                ifactor *= 0.8
             S2 = self.computeS(coords)
-            coords[i] += self.delta[i]
+            coords[i] += self.delta[i]*ifactor
             S1 = self.computeS(coords)
-            coords[i] -= 2*self.delta[i]
+            coords[i] -= 2*self.delta[i]*ifactor
             S3 = self.computeS(coords)
-            coords[i] += self.delta[i]
-            return (S1-2*S2+S3)/(self.delta[i]*self.delta[i])
+            coords[i] += self.delta[i]*ifactor
+            return (S1-2*S2+S3)/(self.delta[i]*self.delta[i]*ifactor*ifactor)
         else:
-            coords[i] += self.delta[i]
-            coords[j] += self.delta[j]
+            ifactor = 1.0
+            while (((coords[i] - self.delta[i]*ifactor) < self.limits[i][0]) | ((coords[i]+self.delta[i]*ifactor) >
+            self.limits[i][1])):
+                ifactor *= 0.8
+            jfactor = 1.0
+            while (((coords[j] - self.delta[j]*jfactor) < self.limits[j][0]) | ((coords[j]+self.delta[j]*jfactor) >
+            self.limits[j][1])):
+                jfactor *= 0.8
+            coords[i] += self.delta[i]*ifactor
+            coords[j] += self.delta[j]*jfactor
             S1 = self.computeS(coords)
 
-            coords[i] -= 2.0*self.delta[i]
+            coords[i] -= 2.0*self.delta[i]*ifactor
             S2 = self.computeS(coords)
 
-            coords[j] -= 2.0*self.delta[j]
+            coords[j] -= 2.0*self.delta[j]*jfactor
             S4 = self.computeS(coords)
 
-            coords[i] += self.delta[i]
+            coords[i] += self.delta[i]*ifactor
             S3 = self.computeS(coords)
 
-            coords[j] += self.delta[j]
+            coords[j] += self.delta[j]*jfactor
 
-            return (S1 - S2 - S3 + S4)/(4*self.delta[i]*self.delta[j])
+            return (S1 - S2 - S3 + S4)/(4*(self.delta[i]*ifactor)*(self.delta[j]*jfactor))
 
     def computeGradient(self, coords):
         G = numpy.zeros(len(coords))
@@ -309,6 +323,7 @@ class spectralSynthesizer( object ):   # low resolution
         for i in range(len(coords)):
             for j in range(len(coords)):
                 H[i,j] = self.compute2ndDeriv(new_coords, i, j)
+                print i, j, H[i,j]
 
         return numpy.matrix(H)
 
@@ -513,11 +528,11 @@ class spectralSynthesizer( object ):   # low resolution
         overlap = scipy.where( (new_wl > min(self.features[self.currFeat]["wl"])) & (new_wl < max(self.features[self.currFeat]["wl"])) )[0]
         x = new_wl[overlap]
         bm = []
-        for region in self.feature[self.currFeat]["comparePoints"]:
+        for region in self.features[self.currFeat]["comparePoints"]:
             bm.extend(scipy.where( (x > region[0]) & (x < region[1]) )[0])
-        H = self.calculateHessian(centroid)
+        H = self.computeHessian(centroid)
         C = 2.0*H.I
-        covar = min(best_values)*C/(len(bm)-len(best_values))
+        covar = min(best_values)*C*len(bm)/(len(bm)-len(best_values))
 
         print best_coords
         print best_values
