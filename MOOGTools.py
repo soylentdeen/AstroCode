@@ -113,6 +113,7 @@ class spectralSynthesizer( object ):   # low resolution
         bm = []
         for region in comparePoints:
             bm.extend(scipy.where( (x > region[0]) & (x < region[1]) )[0])
+                
         for dat in zip(y1[bm], y2[bm], z[bm]):
             error += ((dat[0]-dat[1])/dat[2])**2
             
@@ -412,7 +413,7 @@ class spectralSynthesizer( object ):   # low resolution
                             Tval.append(T)
                             Gval.append(G)
                             Bval.append(B)
-                            out.write('%10.3f %10.3f %10.3f %10.3f %10.3f %10.3f\n' % (T,G,B,x_offset,veiling[-1], S[-1]) )
+                            out.write('%10.3f %10.3f %10.3f %10.4e %10.3f %10.3f\n' % (T,G,B,x_offset,veiling[-1], S[-1]) )
 
             out.close()
             
@@ -508,7 +509,21 @@ class spectralSynthesizer( object ):   # low resolution
         
             print numpy.mean(best_values), numpy.std(best_values)
 
-        return centroid
+        new_wl = self.x_window + centroid[3]
+        overlap = scipy.where( (new_wl > min(self.features[self.currFeat]["wl"])) & (new_wl < max(self.features[self.currFeat]["wl"])) )[0]
+        x = new_wl[overlap]
+        bm = []
+        for region in self.feature[self.currFeat]["comparePoints"]:
+            bm.extend(scipy.where( (x > region[0]) & (x < region[1]) )[0])
+        H = self.calculateHessian(centroid)
+        C = 2.0*H.I
+        covar = min(best_values)*C/(len(bm)-len(best_values))
+
+        print best_coords
+        print best_values
+        print covar
+        raw_input()
+        return centroid, covar
                         
 
     def fitSpectrum(self, wl, flux, error, plt, **kwargs):   # wl in microns
@@ -543,6 +558,7 @@ class spectralSynthesizer( object ):   # low resolution
                     maxx = max(x_sm)
                     self.features[self.currFeat]["wl"] = x_sm
                     
+                    
                     dy_guess = dy_initial_guess
                     dx_guess = self.findWavelengthShift(x_window, flat, x_sm, y_sm)
                     
@@ -562,8 +578,8 @@ class spectralSynthesizer( object ):   # low resolution
                     self.features[self.currFeat]["wl"] = x_sm/10000.0
                     kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                     guess_coords=self.gridSearch(**kwargs)
-                    best_coords = self.simplex(guess_coords, plt)
-                    retval.append(best_coords)
+                    best_coords, covar = self.simplex(guess_coords, plt)
+                    retval.append(best_coords, error)
                     #best_coords = self.marquardt(chisq)
                     print 'Best Fit Coordinates :', best_coords
                 else:
