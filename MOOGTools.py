@@ -60,11 +60,13 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.delta = numpy.array([200.0, 50.0, 0.5, 0.000001, 0.01, 0.05])    # [dT, dG, dB, d_dx, d_dy, dr]
+        self.delta_factor = 1.0
         self.features = []
 
         #for i in range(len(xstart)):
-        for i in [1]:
+        for i in [0,1]:
             feat = dict()
             print feat_num[i]
             feat["num"] = feat_num[i]
@@ -231,46 +233,7 @@ class spectralSynthesizer( object ):   # low resolution
         else:
             return x_sm, y_sm
 
-    '''
-    def traverseDescentVector(self, coordinates, x_obs, flat, z, vosd, **kwargs):
-        index = -1
-        x_sm = self.features[self.currFeat]["wl"]
-        T=coordinates[index].T+vosd["T"]
-        G=coordinates[index].G+vosd["G"]
-        B=coordinates[index].B+vosd["B"]
-        dx=coordinates[index].dx+vosd["dx"]
-        dy=coordinates[index].dy+vosd["dy"]
-        r=coordinates[index].r+vosd["r"]
-        T = max(2500, T)
-        T = min(6000, T)
-        G = min(500, G)
-        G = max(300, G)
-        B = min(4.0, B)
-        B = max(0.0, B)
-        r = max(0.0, r)
-        print "New coordinates:"
-        print "T = ", T
-        print "G = ", G
-        print "B = ", B
-        print "dx = ", dx
-        print "dy = ", dy
-        print "r = ", r
-
-        y_new = self.interpolatedModel(T, G, B)
-        new_wl = x_obs+dx
-        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
-        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G, B=B, dx=dx, dy=dy, r=r))
-        print coordinates[index].chisq
-        if "plot" in kwargs:
-            fit = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+r)/(r+1.0), with_='lines')
-            obs = Gnuplot.Data(new_wl[overlap], flat[overlap], with_='lines')
-            kwargs["plot"].plot(fit, obs)
-    '''
-
-    def computeS(self, coords):
+    def computeS(self, coords, **kwargs):
         #Coords[0] = T
         #Coords[1] = G
         #Coords[2] = B
@@ -284,188 +247,261 @@ class spectralSynthesizer( object ):   # low resolution
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
 
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coords[4]
+        if "plot" in kwargs:
+            obs = Gnuplot.Data(new_wl[overlap], self.flat[overlap], with_='lines')
+            sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
+            veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+coords[5])/(coords[5]+1.0), with_='lines')
+            kwargs["plot"].plot(obs, sim, veil)
         return self.calcError(self.flat[overlap], (synthetic_spectrum+coords[5])/(coords[5]+1.0), self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
     
     def computeDeriv(self, coords, index):
-        newCoords = coords
-        newCoords[index] += self.delta[index]
-        S1 = self.computeS(newCoords)
+        coords[index] += self.delta[index]
+        S1 = self.computeS(coords)
 
-        newCoords[index] -= 2.0*self.delta[index]
-        S2 = self.computeS(newCoords)
+        coords[index] -= 2.0*self.delta[index]
+        S2 = self.computeS(coords)
+
+        coords[index] += self.delta[index]
 
         return (S1-S2)/(2*self.delta[index])
 
     def compute2ndDeriv(self, coords, i, j):
-        newCoords = coords
         if( i == j ):
-            S2 = self.computeS(newCoords)
-            newCoords[i] += self.delta[i]
-            S1 = self.computeS(newCoords)
-            newCoords[i] -= 2*self.delta[i]
-            S3 = self.computeS(newCoords)
+            S2 = self.computeS(coords)
+            coords[i] += self.delta[i]
+            S1 = self.computeS(coords)
+            coords[i] -= 2*self.delta[i]
+            S3 = self.computeS(coords)
+            coords[i] += self.delta[i]
             return (S1-2*S2+S3)/(self.delta[i]*self.delta[i])
         else:
-            newCoords[i] += self.delta[i]
-            newCoords[j] += self.delta[j]
-            S1 = self.computeS(newCoords)
+            coords[i] += self.delta[i]
+            coords[j] += self.delta[j]
+            S1 = self.computeS(coords)
 
-            newCoords[i] -= 2.0*self.delta[i]
-            S2 = self.computeS(newCoords)
+            coords[i] -= 2.0*self.delta[i]
+            S2 = self.computeS(coords)
 
-            newCoords[j] -= 2.0*self.delta[j]
-            S4 = self.computeS(newCoords)
+            coords[j] -= 2.0*self.delta[j]
+            S4 = self.computeS(coords)
 
-            newCoords[i] += self.delta[i]
-            S3 = self.computeS(newCoords)
+            coords[i] += self.delta[i]
+            S3 = self.computeS(coords)
+
+            coords[j] += self.delta[j]
 
             return (S1 - S2 - S3 + S4)/(4*self.delta[i]*self.delta[j])
 
-    def computeGradient(self, coordinates, x_obs, flat, z, y_old):
-        x_sm = self.features[self.currFeat]["wl"]
+    def computeGradient(self, coords):
+        G = numpy.zeros(len(coords))
 
-        G = numpy.zeros(len(coordinates))
+        for i in range(len(coords)):
+            G[i] = self.computeDeriv(coords, i)
 
-        for i in range(len(coordinates)):
-            G[i] = self.computeDeriv(coodinates, i)
+        return numpy.matrix(G)
 
-        return G
+    def computeHessian(self, coords):
+        new_coords = coords
+        H = numpy.zeros([len(coords),len(coords)])
 
-    def computeHessian(self, coordinates, x_obs, flat, z, y_old):
-        x_sm = self.features[self.currFeat]["wl"]
+        for i in range(len(coords)):
+            for j in range(len(coords)):
+                H[i,j] = self.compute2ndDeriv(new_coords, i, j)
+
+        return numpy.matrix(H)
+
+    def marquardt(self, chisq):
+        self.alpha = 0.01
+        old_chisq = chisq[0][0]
+        old_coordinates = chisq[0][1]
         
-        H = numpy.zeros([6, 6])
-
-        for i in range(len(coordinates)):
-            for j in range(len(coordinates)):
-                H[i,j] = compute2ndDeriv(coordinates, i, j)
-
-        return H
-
-       
-    '''
-    def calcDescentVector(self, coordinates, x_obs, flat, z, y_old):
-        x_sm = self.features[self.currFeat]["wl"]
-        if (len(coordinates) == 1):
-            index = -1
-        else:
-            index = -2
-        T=coordinates[index].T
-        G=coordinates[index].G
-        B=coordinates[index].B
-        dx=coordinates[index].dx
-        dy=coordinates[index].dy
-        r=coordinates[index].r
-        old_chisq = coordinates[index].chisq
-
-        dT = 250.0
-        dG = 50.0
-        dB = 0.5 
-        d_dx = 0.000000001
-        d_dy = 0.0001
-        dr = 0.005
-
-        fT=fG=fB=1.0
-        fdx=fdy=fr=0.5
-        
-        # Calculate the dT partial derivative
-        if (T < 6000-dT):
-            if (T <= 3900-dT):
-                dT = dT
-            else:
-                if (G <= 500):
-                    dT = dT
-                else:
-                    dT = -dT
-        else:
-            dT = -dT
+        while( old_chisq > 10):
+            print old_chisq
+            print old_coordinates
+            G = self.computeGradient(old_coordinates)
+            H = self.computeHessian(old_coordinates)
+            H_prime = H*numpy.matrix(numpy.eye(len(old_coordinates), len(old_coordinates))*(1.0+self.alpha))
             
-        y_new = self.interpolatedModel(T+dT, G, B)
-        new_wl = x_obs+dx
-        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
-        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisqT = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        T_step = -(chisqT-old_chisq)/(fT*dT)
-        coordinates.append(gridPoint(chisq=chisqT, T=T+dT, G=G, B=B, dx=dx, dy=dy, r=r))
-        
-        # Calculate the dG partial derivative
-        if (G <= 500-dG):
-            dG = dG
-        else:
-            if ((T <= 3900) & (G < 550-dG)):
-                dG = dG
+            vect = H_prime.I*G.transpose()
+            new_coordinates = old_coordinates+vect.transpose()
+            old_chisq = self.computeS(numpy.array(new_coordinates)[0])
+            old_coordinates = numpy.array(new_coordinates)[0]
+
+    def check_bounds(self, coords):
+        retval = []
+        if ( coords[0] >= 2500.0 ):
+            if ( coords[0] <= 6000.0):
+                retval.append(coords[0])
             else:
-                dG = -dG
-
-        y_new = self.interpolatedModel(T, G+dG, B)
-        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisqG = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        G_step = -(chisqG-old_chisq)/(fG*dG)
-        coordinates.append(gridPoint(chisq=chisqG, T=T, G=G+dG, B=B, dx=dx, dy=dy, r=r))
-
-        # Calculate the dB partial derivative
-        if (B < 4.0-dB):
-            dB = dB
+                retval.append(6000.0)
         else:
-            dB = -dB
+            retval.append(2500.0)
 
-        y_new = self.interpolatedModel(T, G, B+dB)
-        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*dy
-        chisqB = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        B_step = -(chisqB-old_chisq)/(fB*dB)
-        coordinates.append(gridPoint(chisq=chisqB, T=T, G=G, B=B+dB, dx=dx, dy=dy, r=r))
+        if ( coords[1] >= 300.0):
+            if (coords[1] <= 500.0):
+                retval.append(coords[1])
+            else:
+                retval.append(500.0)
+        else:
+            retval.append(300.0)
 
-        # Calculate the d_dx partial derivative
-        new_wl = x_obs+dx+d_dx
+        if (coords[2] >= 0.0):
+            if (coords[2] <= 4.0):
+                retval.append(coords[2])
+            else:
+                retval.append(4.0)
+        else:
+            retval.append(0.0)
+
+        retval.append(coords[3])
+        retval.append(coords[4])
+        if (coords[5] > 0.0):
+            retval.append(coords[5])
+        else:
+            retval.append(0.0)
+
+        return retval
+
+    def gridSearch(self, x_offset, plt):
+        yoffset = 1.0
+        veiling = []
+        new_wl = self.x_window+x_offset
+        x_sm = self.features[self.currFeat]["wl"]
+
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
-        synthetic_spectrum = self.binMOOGSpectrum(y_old, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        dx_step = -(chisq-old_chisq)/(fdx*d_dx)
-        dx_step = 0.0
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G, B=B, dx=dx+d_dx, dy=dy, r=r))
+        Tval = []
+        Gval = []
+        Bval = []
+        S = []
 
-        # Calculate the d_dy partial derivative
-        new_wl = x_obs+dx
-        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
-        synthetic_spectrum = self.binMOOGSpectrum(y_old, x_sm, new_wl[overlap])*(dy+d_dy)
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r)/(r+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        dy_step = -(chisq-old_chisq)/(fdy*d_dy)
-        dy_step = 0.0
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G, B=B, dx=dx, dy=dy+d_dy, r=r))
+        for B in self.bfields:
+            for T in self.temps:
+                print B, T
+                for G in self.gravs:
+                    if (T < 3900.0):
+                        y_sm = self.readMOOGModel(T, G, B, axis ='y')
+                        synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
+                        #Calculate the initial guess for the veiling
+                        veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum,
+                        new_wl[overlap],self.features[self.currFeat]["comparePoints"]))
+                        S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
+                        self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
+                        Tval.append(T)
+                        Gval.append(G)
+                        Bval.append(B)
+                    elif (G < 500):
+                        y_sm = self.readMOOGModel(T, G, B, axis ='y')
+                        synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
+                        #Calculate the initial guess for the veiling
+                        veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum, new_wl[overlap],
+                        self.features[self.currFeat]["comparePoints"]))
+                        S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
+                        self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
+                        Tval.append(T)
+                        Gval.append(G)
+                        Bval.append(B)
 
-        # Calculate the dr partial derivative
-        synthetic_sepctrum = self.binMOOGSpectrum(y_old, x_sm, new_wl[overlap])*dy
-        chisq = self.calcError(flat[overlap], (synthetic_spectrum+r+dr)/(r+dr+1.0), z[overlap], new_wl[overlap],
-        self.features[self.currFeat]["comparePoints"])
-        r_step = -(chisq-old_chisq)/(fr*dr)
-        r_step = 0.0
-        coordinates.append(gridPoint(chisq=chisq, T=T, G=G, B=B, dx=dx, dy=dy, r=r+dr))
+        order = numpy.argsort(S)
 
-        L = ( T_step**2.0 + G_step**2.0 + B_step**2.0 + dx_step**2.0 + dy_step**2.0 + r_step**2.0 )**0.5
+        Tval = numpy.array(Tval)
+        Gval = numpy.array(Gval)
+        Bval = numpy.array(Bval)
+        S = numpy.array(S)
+        veiling = numpy.array(veiling)
 
-        vector_of_steepest_descent = {"T":T_step*dT/(L), "G":G_step*dG/(L), "B":B_step*dB/(L),
-        "dx":dx_step*d_dx/(L),"dy":dy_step*d_dy/(L), "r":r_step*dr/(L)}
+        '''
+        for B in self.bfields:
+            for G in self.gravs:
+                bm = scipy.where( (Gval==G) & (Bval==B) )[0]
+                a = Gnuplot.Data(Tval[bm], S[bm], with_='lines')
+                plt('set title "B='+str(B)+', G ='+str(G)+'"')
+                plt.plot(a)
+                raw_input()'''
+
+        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.0,numpy.mean(veiling[order[0:20]])]
+        return numpy.array(initial_guess)
+
+
+    def simplex(self, init_guess, plt):
+        simplex_coords = [init_guess]
+        simplex_values = [self.computeS(init_guess)]
+
+        for i in range(len(self.delta)):
+            new_guess = init_guess.copy()
+            new_guess[i] += self.delta[i]/self.delta_factor
+            simplex_coords.append(new_guess)
+            simplex_values.append(self.computeS(new_guess))
+
+        best_coords = []
+        best_coords.extend(simplex_coords)
+        best_values = []
+        best_values.extend(simplex_values)
+        n_contractions = 0
+
+        while (numpy.std(best_values) > 0.5):
+            order = numpy.argsort(best_values)
+            centroid = numpy.zeros(len(best_coords[0]))
+            for i in range(len(order)-1):
+                centroid += best_coords[order[i]]
+            centroid /= len(order)-1.0
+            print centroid
+
+            # Reflect about centroid
+            centroid_S = self.computeS(centroid, plot=plt)
+            distance = centroid - best_coords[order[-1]]
+            trial_1 = self.check_bounds(centroid + distance)
+            S1 = self.computeS(trial_1)
+            
+            if (S1 > best_values[order[-1]]):    # Try longer path along distance
+                trial_2 = self.check_bounds(centroid + 2.0*distance)
+                S2 = self.computeS(trial_2)
+                if (S2 > best_values[order[-1]]):    # Try half the distance
+                    trial_3 = self.check_bounds(centroid + 0.5*distance)
+                    S3 = self.computeS(trial_3)
+                    if (S3 > best_values[order[-1]]):     # Shrink?
+                        #self.delta_factor *= 2.0
+                        if n_contractions <= 2:
+                            for i in range(len(best_coords)):
+                                distance = centroid-best_coords[order[i]]
+                                best_coords[i] = self.check_bounds(best_coords[order[i]] - distance/2.0)
+                                best_values[i] = self.computeS(best_coords[i])
+                            print 'Contracted!'
+                            n_contractions += 1
+                        else:
+                            break
+                    else:
+                        for i in range(len(order)-1):
+                            best_coords[order[i]] = best_coords[order[i]]
+                            best_values[order[i]] = best_values[order[i]]
+                        best_coords[order[-1]] = trial_3
+                        best_values[order[-1]] = self.computeS(trial_3)
+                        print 'Trial 3'
+                else:
+                    for i in range(len(order)-1):
+                        best_coords[order[i]] = best_coords[order[i]]
+                        best_values[order[i]] = best_values[order[i]]
+                    best_coords[order[-1]] = trial_2
+                    best_coords[order[-1]] = self.computeS(trial_2)
+                    print 'Trial 2'
+            else:
+                for i in range(len(order) -1):
+                    best_coords[order[i]] = best_coords[order[i]]
+                    best_values[order[i]] = best_values[order[i]]
+                best_coords[order[-1]] = trial_1
+                best_values[order[-1]] = self.computeS(trial_1)
+                print 'Trial 1'
         
+            print numpy.mean(best_values), numpy.std(best_values)
 
-        L = ( T_step**2.0 + G_step**2.0 + B_step**2.0 )**0.5
+        return best_coords
+                        
 
-        vector_of_steepest_descent = {"T":T_step*dT/(L), "G":G_step*dG/(L), "B":B_step*dB/(L), "dx":0.0, "dy":0.0,
-        "r":0.0}
-        print vector_of_steepest_descent
-        print L
-        raw_input()
-
-        return vector_of_steepest_descent
-    '''
-	
     def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
+        retval = []
         for feat, num in zip(self.features, range(len(self.features))):
         #for feat, num in zip(self.features, range(len(self.features))):
+            self.delta_factor = 1.0
+            chisq = []
             self.currFeat = num
             if ( min(wl) < feat["xstart"] ):
                 #chisq = numpy.zeros([len(feat["TandGandB"][0]), len(self.x_offsets), len(self.y_offsets), len(self.veilings)])
@@ -504,31 +540,15 @@ class spectralSynthesizer( object ):   # low resolution
                 r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
                 #r_initial_guess = 0.0
 
-                coordinates.append([T_guess, G_guess, B_guess, dx_guess, dy_guess, r_initial_guess])
-                chisq = self.computeS(coordinates[-1])
+                guess_coords = self.gridSearch(dx_guess, plt)
 
-                print chisq
+                best_coords = self.simplex(guess_coords, plt)
 
-                print asdf
-                #coordinates.append(gridPoint(T=T_guess, G=G_guess, B=B_guess, dx=dx_guess, dy=dy_guess, r=r_initial_guess, chisq=self.calcError(flat[overlap], (synthetic_spectrum+r_initial_guess)/(r_initial_guess+1.0), z[overlap], new_wl[overlap], feat["comparePoints"])))
-                old_chisq = coordinates[-1].chisq
+                retval.append(best_coords)
+                #best_coords = self.marquardt(chisq)
 
-                turns = 0   #Keeps track of how many changes of direction
-                
-                while turns < 50:
-                    #Calculate the vector of steepest descent
-                    vosd = self.calcDescentVector(coordinates, x_window, flat, z, y_sm)
-                    #Travel along the vector of steepest descent for 1 step
-                    self.traverseDescentVector(coordinates, x_window, flat, z, vosd, plot=plt)
-                    while(coordinates[-1].chisq < old_chisq):   #keep continuing down vector of steepest descent
-                        old_chisq = coordinates[-1].chisq
-                        self.traverseDescentVector(coordinates, x_window, flat, z, vosd, plot=plt)
-                    print "New direction!"
-                    turns += 1
 
-                print coordinates[-1].chisq
-                print coordinates[-2].chisq
-                print coordinates[0].chisq
+                print 'Best Fit Coordinates :', best_coords
                 raw_input()
-        return 'Hi'
+        return retval
 
