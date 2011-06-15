@@ -60,8 +60,8 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
         self.delta = numpy.array([200.0, 50.0, 0.5, 0.000001, 0.01, 0.05])    # [dT, dG, dB, d_dx, d_dy, dr]
         self.delta_factor = 1.0
         self.features = []
