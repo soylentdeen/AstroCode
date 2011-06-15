@@ -60,7 +60,7 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
         2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.delta = numpy.array([200.0, 50.0, 0.5, 0.000001, 0.01, 0.05])    # [dT, dG, dB, d_dx, d_dy, dr]
         self.delta_factor = 1.0
         self.features = []
@@ -362,45 +362,58 @@ class spectralSynthesizer( object ):   # low resolution
 
         return retval
 
-    def gridSearch(self, x_offset, plt):
+    def gridSearch(self, x_offset, plt, **kwargs):
         yoffset = 1.0
         veiling = []
         new_wl = self.x_window+x_offset
         x_sm = self.features[self.currFeat]["wl"]
-
-        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
         Tval = []
         Gval = []
         Bval = []
         S = []
 
-        for B in self.bfields:
-            for T in self.temps:
-                print B, T
-                for G in self.gravs:
-                    if (T < 3900.0):
-                        y_sm = self.readMOOGModel(T, G, B, axis ='y')
-                        synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
-                        #Calculate the initial guess for the veiling
-                        veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum,
-                        new_wl[overlap],self.features[self.currFeat]["comparePoints"]))
-                        S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
-                        self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
-                        Tval.append(T)
-                        Gval.append(G)
-                        Bval.append(B)
-                    elif (G < 500):
-                        y_sm = self.readMOOGModel(T, G, B, axis ='y')
-                        synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
-                        #Calculate the initial guess for the veiling
-                        veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum, new_wl[overlap],
-                        self.features[self.currFeat]["comparePoints"]))
-                        S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
-                        self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
-                        Tval.append(T)
-                        Gval.append(G)
-                        Bval.append(B)
+        outfile = kwargs["outfile"]
+        
+        try:
+            infile = open(outfile)
+            for line in infile.readlines():
+                l = line.split()
+                Tval.append(float(l[0]))
+                Gval.append(float(l[1]))
+                Bval.append(float(l[2]))
+                veiling.append(float(l[3]))
+                s.append(float(l[4]))
+            infile.close()
+        except:
+            out = open(outfile, 'w')
+            out.write('#%10s %10s %10s %10s %10s\n' % ('Temp', 'Grav', 'Bfield', 'Veiling', 'Chi-Square'))
 
+            overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
+
+            for B in self.bfields:
+                for T in self.temps:
+                    print B, T
+                    for G in self.gravs:
+                        flag = False
+                        if (T < 3900.0):
+                            flag = True
+                        elif (G < 500):
+                            flag = True
+                        if flag == True:
+                            y_sm = self.readMOOGModel(T, G, B, axis ='y')
+                            synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
+                            #Calculate the initial guess for the veiling
+                            veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum,
+                            new_wl[overlap],self.features[self.currFeat]["comparePoints"]))
+                            S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
+                            self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
+                            Tval.append(T)
+                            Gval.append(G)
+                            Bval.append(B)
+                            out.write('%10.3f %10.3f %10.3f %10.3f %10.3f\n' % (T, G, B, veiling[-1], S[-1]) )
+
+            out.close()
+            
         order = numpy.argsort(S)
 
         Tval = numpy.array(Tval)
@@ -493,11 +506,12 @@ class spectralSynthesizer( object ):   # low resolution
         
             print numpy.mean(best_values), numpy.std(best_values)
 
-        return best_coords
+        return centroid
                         
 
-    def fitSpectrum(self, wl, flux, error, plt):   # wl in microns
+    def fitSpectrum(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
+        outfile = kwargs["outfile"]
         for feat, num in zip(self.features, range(len(self.features))):
         #for feat, num in zip(self.features, range(len(self.features))):
             self.delta_factor = 1.0
@@ -540,15 +554,14 @@ class spectralSynthesizer( object ):   # low resolution
                 r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
                 #r_initial_guess = 0.0
 
-                guess_coords = self.gridSearch(dx_guess, plt)
+                guess_coords = self.gridSearch(dx_guess, plt, outfile=outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat')
 
-                best_coords = self.simplex(guess_coords, plt)
-
-                retval.append(best_coords)
-                #best_coords = self.marquardt(chisq)
-
-
-                print 'Best Fit Coordinates :', best_coords
-                raw_input()
+                if kwargs["mode"] == 'FINAL':
+                    best_coords = self.simplex(guess_coords, plt)
+                    retval.append(best_coords)
+                    #best_coords = self.marquardt(chisq)
+                    print 'Best Fit Coordinates :', best_coords
+                else:
+                    retval.append([0])
         return retval
 
