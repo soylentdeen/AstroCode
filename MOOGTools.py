@@ -57,14 +57,15 @@ class spectralSynthesizer( object ):   # low resolution
         slope_stop = [1.25, 2.25, 2.29]
         strongLines = [[2.166, 2.2066], [2.166, 2.2066], [2.263, 2.267]]
         lineWidths = [[0.005, 0.005],[0.005, 0.005], [0.005, 0.005]]
-        comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,
-        2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
+        #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
+        comparePoints = [[[1.1816,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
-        self.delta = numpy.array([200.0, 50.0, 0.5, 0.000001, 0.01, 0.05])    # [dT, dG, dB, d_dx, d_dy, dr]
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/Ophiuchus/bfields/'
+        self.delta = numpy.array([200.0, 50.0, 0.5, 0.00001, 0.03, 0.10])    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
-        self.limits = [[2500, 6000], [300, 500], [0.0,4.0], [-10, 10], [-10, 10], [0, 10]]
+        self.limits = [[2500.0, 6000.0], [300.0, 500.0], [0.0,4.0], [-10.0, 10.0], [-10.0, 10.0], [0.0, 10.0]]
+        self.floaters = numpy.array([True, True, True, False, True, True])
         self.features = []
 
 
@@ -146,7 +147,7 @@ class spectralSynthesizer( object ):   # low resolution
         if abs(offset_computed) > 20:
             offset_computed = 0
             
-        return offset_computed
+        self.features[self.currFeat]["x_offset"] = offset_computed
 
     def calcVeiling(self, y_obs, y_calc, x, comparePoints):
         bm = []
@@ -402,7 +403,7 @@ class spectralSynthesizer( object ):   # low resolution
         elif kwargs["mode"] == 'PREP':
             out = open(outfile, 'w')
             x_sm = self.features[self.currFeat]["wl"]
-            x_offset = kwargs["x_offset"]
+            x_offset = self.features[self.currFeat]["x_offset"]
             new_wl = self.x_window+x_offset
             out.write('#%10s %10s %10s %10s %10s %10s\n' % ('Temp', 'Grav', 'Bfield', 'X offset', 'Veiling', 'Chi-Square'))
 
@@ -439,6 +440,7 @@ class spectralSynthesizer( object ):   # low resolution
         Bval = numpy.array(Bval)
         S = numpy.array(S)
         veiling = numpy.array(veiling)
+        self.features[self.currFeat]["x_offset"] = x_offset
 
         '''
         for B in self.bfields:
@@ -449,25 +451,27 @@ class spectralSynthesizer( object ):   # low resolution
                 kwargs["plot"].plt.plot(a)
                 raw_input()'''
 
-        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.0,numpy.mean(veiling[order[0:20]])]
+        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
+        #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,numpy.mean(veiling[order[0:20]])]
         return numpy.array(initial_guess)
 
 
     def simplex(self, init_guess, plt):
-        simplex_coords = [init_guess]
-        simplex_values = [self.computeS(init_guess)]
-
-        for i in range(len(self.delta)):
-            new_guess = init_guess.copy()
-            new_guess[i] += self.delta[i]/self.delta_factor
-            simplex_coords.append(new_guess)
-            simplex_values.append(self.computeS(new_guess))
+        #simplex_coords = [init_guess]
+        #simplex_values = [self.computeS(init_guess)]
 
         best_coords = []
-        best_coords.extend(simplex_coords)
         best_values = []
-        best_values.extend(simplex_values)
+        bm = scipy.where(self.floaters == True)[0]
+        for i in range(len(bm)):
+            new_guess = init_guess.copy()
+            new_guess[bm[i]] += self.delta[bm[i]]/self.delta_factor
+            best_coords.append(new_guess)
+            best_values.append(self.computeS(new_guess))
+
         n_contractions = 0
+        print len(best_coords)
+        print best_coords
 
         while (numpy.std(best_values) > 0.5):
             order = numpy.argsort(best_values)
@@ -524,6 +528,7 @@ class spectralSynthesizer( object ):   # low resolution
         
             print numpy.mean(best_values), numpy.std(best_values)
 
+        '''
         new_wl = self.x_window + centroid[3]
         overlap = scipy.where( (new_wl > min(self.features[self.currFeat]["wl"])) & (new_wl < max(self.features[self.currFeat]["wl"])) )[0]
         x = new_wl[overlap]
@@ -538,7 +543,8 @@ class spectralSynthesizer( object ):   # low resolution
         print best_values
         print covar
         raw_input()
-        return centroid, covar
+        '''
+        return centroid
                         
 
     def fitSpectrum(self, wl, flux, error, plt, **kwargs):   # wl in microns
@@ -575,26 +581,28 @@ class spectralSynthesizer( object ):   # low resolution
                     
                     
                     dy_guess = dy_initial_guess
-                    dx_guess = self.findWavelengthShift(x_window, flat, x_sm, y_sm)
+                    self.findWavelengthShift(x_window, flat, x_sm, y_sm)
+                    dx_guess = self.features[self.currFeat]["x_offset"]
                     
                     #Calculate the initial guess for the wavelength shift
                     new_wl = x_window+dx_guess
                     overlap = scipy.where( (new_wl > minx) & (new_wl < maxx) )[0]
                     
                     synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
+
                     
                     #Calculate the initial guess for the veiling
-                    r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
+                    #r_initial_guess = self.calcVeiling(flat[overlap], synthetic_spectrum, new_wl[overlap], feat["comparePoints"])
                     kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
-                    guess_coords = self.gridSearch(x_offset=dx_guess,plot=plt,**kwargs)
+                    guess_coords = self.gridSearch(plot=plt,**kwargs)
 
                 if kwargs["mode"] == 'FINAL':
                     x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 1.0)
                     self.features[self.currFeat]["wl"] = x_sm/10000.0
                     kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                     guess_coords=self.gridSearch(**kwargs)
-                    best_coords, covar = self.simplex(guess_coords, plt)
-                    retval.append(best_coords, error)
+                    best_coords = self.simplex(guess_coords, plt)
+                    retval.append(best_coords)
                     #best_coords = self.marquardt(chisq)
                     print 'Best Fit Coordinates :', best_coords
                 else:
