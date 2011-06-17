@@ -61,7 +61,7 @@ class spectralSynthesizer( object ):   # low resolution
         comparePoints = [[[1.1816,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
         self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/Ophiuchus/bfields/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
         self.delta = numpy.array([200.0, 50.0, 0.5, 0.00001, 0.03, 0.10])    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = [[2500.0, 6000.0], [300.0, 500.0], [0.0,4.0], [-10.0, 10.0], [-10.0, 10.0], [0.0, 10.0]]
@@ -164,22 +164,22 @@ class spectralSynthesizer( object ):   # low resolution
     def interpolatedModel(self, T, G, B):
         #choose bracketing temperatures
         if not(T in self.temps):
-            Tlow = max(self.temps[scipy.where(self.temps < T)])
-            Thigh = min(self.temps[scipy.where(self.temps > T)])
+            Tlow = max(self.temps[scipy.where(self.temps <= T)])
+            Thigh = min(self.temps[scipy.where(self.temps >= T)])
         else:
             Tlow = Thigh = T
 
         #choose bracketing surface gravities
         if not(G in self.gravs):
-            Glow = max(self.gravs[scipy.where(self.gravs < G)])
-            Ghigh = min(self.gravs[scipy.where(self.gravs > G)])
+            Glow = max(self.gravs[scipy.where(self.gravs <= G)])
+            Ghigh = min(self.gravs[scipy.where(self.gravs >= G)])
         else:
             Glow = Ghigh = G
 
         #choose bracketing B-fields
         if not(B in self.bfields):
-            Blow = max(self.bfields[scipy.where(self.bfields < B)])
-            Bhigh  = min(self.bfields[scipy.where(self.bfields > B)])
+            Blow = max(self.bfields[scipy.where(self.bfields <= B)])
+            Bhigh  = min(self.bfields[scipy.where(self.bfields >= B)])
         else:
             Blow = Bhigh = B
 
@@ -451,8 +451,8 @@ class spectralSynthesizer( object ):   # low resolution
                 kwargs["plot"].plt.plot(a)
                 raw_input()'''
 
-        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
-        #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,numpy.mean(veiling[order[0:20]])]
+        #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
+        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,numpy.mean(veiling[order[0:20]])]
         return numpy.array(initial_guess)
 
 
@@ -465,13 +465,17 @@ class spectralSynthesizer( object ):   # low resolution
         bm = scipy.where(self.floaters == True)[0]
         for i in range(len(bm)):
             new_guess = init_guess.copy()
-            new_guess[bm[i]] += self.delta[bm[i]]/self.delta_factor
+            if (new_guess[bm[i]] +self.delta[bm[i]]/self.delta_factor) < self.limits[bm[i]][1]:
+                new_guess[bm[i]] += self.delta[bm[i]]/self.delta_factor
+            else:
+                new_guess[bm[i]] -= self.delta[bm[i]]/self.delta_factor
             best_coords.append(new_guess)
             best_values.append(self.computeS(new_guess))
 
         n_contractions = 0
         print len(best_coords)
         print best_coords
+        centroid = numpy.zeros(len(best_coords[0]))
 
         while (numpy.std(best_values) > 0.5):
             order = numpy.argsort(best_values)
