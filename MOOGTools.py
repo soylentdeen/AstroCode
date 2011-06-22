@@ -551,6 +551,23 @@ class spectralSynthesizer( object ):   # low resolution
         return centroid
                         
 
+    def fitSpectrum(self, wl, flux, error, plt1, plt2, **kwargs):
+        retval = []
+        outfile = kwargs["outfile"]
+        for feat, num in zip(self.features, range(len(self.features))):
+            if (min(wl) < feat["xstart"]):
+                x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_star"], feat["slope_stop"], strongLines=feat["strongLines"], lineWidths=feat["linesWidhts"], errors=True)
+
+                self.x_window[num] = x_window
+                self.flat[num] = flat
+                self.z[num] = z
+
+                if kwargs["modes"] == 'PREP':
+                    coordinates = []
+                    T_initial_guess = 4000.0
+                    G_initial_guess = 400.0
+
+
     def fitSpectrum(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
         outfile = kwargs["outfile"]
@@ -605,6 +622,11 @@ class spectralSynthesizer( object ):   # low resolution
                     self.features[self.currFeat]["wl"] = x_sm/10000.0
                     kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                     guess_coords=self.gridSearch(**kwargs)
+                    if self.currFeat == 1:
+                        guess_coords[0] = retval[-1][0]
+                        self.floaters[0] = False
+                    else:
+                        self.floaters[0] = True
                     best_coords = self.simplex(guess_coords, plt)
                     retval.append(best_coords)
                     #best_coords = self.marquardt(chisq)
