@@ -465,6 +465,69 @@ class spectralSynthesizer( object ):   # low resolution
         initial_guess = {"T":numpy.mean(Tval[order[0:20]]), "G":numpy.mean(Gval[order[0:20]]),"B":numpy.mean(Bval[order[0:20]])}
         return numpy.array(initial_guess)
 
+    def findCentroid(self, coords):
+        T = 0.0
+        G = 0.0
+        B = 0.0
+        n_coords = float(len(coords))
+        n_feat = len(coords[0].bandCoords)
+        dy = numpy.zeros(n_feat)
+        r = numpy.zeros(n_feat)
+        for coord in coords:
+            T += coord.TGB["T"]/n_coords
+            G += coord.TGB["G"]/n_coords
+            B += coord.TGB["B"]/n_coords
+            for i in range(n_feat):
+                dy[i] += coord.bandCoords[i]["dy"]/n_coords
+                r[i] += coord.bandCoords[i]["r"]/n_coords
+
+        TGB = {"T":T, "G":G, "B":B}
+        bC = []
+        for i in range(n_feat):
+            bC.append({"dy":dy[i], "r":r[i]})
+
+        retval = gridPoint(TGB, bC)
+        return retval
+            
+    def reflect(self, centroid, coord, **kwargs):
+        if kwargs["trial"] == 1:
+            new_T = 2*centroid.TGB["T"] - coord.TGB["T"]
+            new_G = 2*centroid.TGB["G"] - coord.TGB["G"]
+            new_B = 2*centroid.TGB["B"] - coord.TGB["B"]
+            n_feat = len(coords[0].bandCoords)
+            new_dy = numpy.zeros(n_feat)
+            new_r = numpy.zeros(n_feat)
+            for i in range(n_feat):
+                new_dy[i] = 2*centroid.bandCoords[i]["dy"] - coord.bandCoords[i]["dy"]
+                new_r[i] = 2*centroid.bandCoords[i]["r"] - coord.bandCoords[i]["r"]
+
+            TGB = {"T":new_T, "G":new_G, "B":new_B}
+            bC = []
+            for i in range(n_feat):
+                bC.append({"dy":new_dy[i], "r":new_r[i]})
+
+            retval = gridPoint(TGB, bC)
+        elif kwargs["trial"] == 2:
+            new_T = 2*centroid.TGB["T"] - coord.TGB["T"]
+            new_G = 2*centroid.TGB["G"] - coord.TGB["G"]
+            new_B = 2*centroid.TGB["B"] - coord.TGB["B"]
+            n_feat = len(coords[0].bandCoords)
+            new_dy = numpy.zeros(n_feat)
+            new_r = numpy.zeros(n_feat)
+            for i in range(n_feat):
+                new_dy[i] = 2*centroid.bandCoords[i]["dy"] - coord.bandCoords[i]["dy"]
+                new_r[i] = 2*centroid.bandCoords[i]["r"] - coord.bandCoords[i]["r"]
+
+            TGB = {"T":new_T, "G":new_G, "B":new_B}
+            bC = []
+            for i in range(n_feat):
+                bC.append({"dy":new_dy[i], "r":new_r[i]})
+
+            retval = gridPoint(TGB, bC)
+            
+        return retval
+
+    def contract(self, centroid, coords):
 
     def simplex(self, init_guess, plt):
         #simplex_coords = [init_guess]
@@ -498,58 +561,43 @@ class spectralSynthesizer( object ):   # low resolution
                         Svalues.append(computeS(simplexPoint))
 
         n_contractions = 0
-        centroid = numpy.zeros(coords[0].n_dims)
 
         while (numpy.std(Svalues) > 0.5):
             order = numpy.argsort(Svalues)
             centroid = self.findCentroid(coords)
-            print centroid
 
             # Reflect about centroid
-            distance = centroid - best_coords[order[-1]]
-            trial_1 = self.check_bounds(centroid + distance)
+            trial_1 = self.reflect(centroid, coords[order[-1]], trial=1)
             S1 = self.computeS(trial_1)
             
             if (S1 > best_values[order[-1]]):    # Try longer path along distance
-                trial_2 = self.check_bounds(centroid + 2.0*distance)
+                trial_2 = self.reflect(centroid, coords[order[-1]], trial=2)
                 S2 = self.computeS(trial_2)
                 if (S2 > best_values[order[-1]]):    # Try half the distance
-                    trial_3 = self.check_bounds(centroid + 0.5*distance)
+                    trial_3 = self.reflect(centroid, coords[order[-1]], trial=3)
                     S3 = self.computeS(trial_3)
                     if (S3 > best_values[order[-1]]):     # Shrink?
                         #self.delta_factor *= 2.0
                         if n_contractions <= 2:
-                            for i in range(len(best_coords)):
-                                distance = centroid-best_coords[order[i]]
-                                best_coords[i] = self.check_bounds(best_coords[order[i]] - distance/2.0)
-                                best_values[i] = self.computeS(best_coords[i])
+                            coords = self.contract(centroid, coords)
                             print 'Contracted!'
                             n_contractions += 1
                         else:
                             break
                     else:
-                        for i in range(len(order)-1):
-                            best_coords[order[i]] = best_coords[order[i]]
-                            best_values[order[i]] = best_values[order[i]]
-                        best_coords[order[-1]] = trial_3
-                        best_values[order[-1]] = self.computeS(trial_3)
+                        coords[order[-1]] = trial_3
+                        Svalues[order[-1]] = self.computeS(trial_3)
                         print 'Trial 3'
                 else:
-                    for i in range(len(order)-1):
-                        best_coords[order[i]] = best_coords[order[i]]
-                        best_values[order[i]] = best_values[order[i]]
-                    best_coords[order[-1]] = trial_2
-                    best_coords[order[-1]] = self.computeS(trial_2)
+                    coords[order[-1]] = trial_2
+                    Svalues[order[-1]] = self.computeS(trial_2)
                     print 'Trial 2'
             else:
-                for i in range(len(order) -1):
-                    best_coords[order[i]] = best_coords[order[i]]
-                    best_values[order[i]] = best_values[order[i]]
-                best_coords[order[-1]] = trial_1
-                best_values[order[-1]] = self.computeS(trial_1)
+                coords[order[-1]] = trial_1
+                Svalues[order[-1]] = self.computeS(trial_1)
                 print 'Trial 1'
         
-            print numpy.mean(best_values), numpy.std(best_values)
+            #print numpy.mean(best_values), numpy.std(best_values)
 
         '''
         new_wl = self.x_window + centroid[3]
@@ -567,7 +615,7 @@ class spectralSynthesizer( object ):   # low resolution
         print covar
         raw_input()
         '''
-        return centroid
+        return self.findCentroid(coords)
                         
 
     def fitSpectrum(self, wl, flux, error, plt1, plt2, **kwargs):
