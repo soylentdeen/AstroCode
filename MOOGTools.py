@@ -39,14 +39,14 @@ def write_parfile(filename, **kwargs):
     df.close()
 
 class gridPoint( object ):    # Object which contains information about a Chi-Squared grid point
-    def __init__(self, **kwargs):
-        self.chisq = kwargs["chisq"]
-        self.T = kwargs["T"]
-        self.G = kwargs["G"]
-        self.B = kwargs["B"]
-        self.dx = kwargs["dx"]
-        self.dy = kwargs["dy"]
-        self.r = kwargs["r"]
+    def __init__(self, TGBcoords, bandCoords):
+        
+        self.TGB = {"T":TGBcoords["T"], "G":TGBcoords["G"], "B":TGBcoords["B"]}
+        self.bandCoords= {}
+        self.n_dims = 3
+        for i in len(bandCoords):
+            self.bandCoords[i] = bandCoords[i]
+            self.n_dims += len(bandCoords[i].keys())
 
 class spectralSynthesizer( object ):   # low resolution
     def __init__(self):
@@ -62,10 +62,10 @@ class spectralSynthesizer( object ):   # low resolution
 
         self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
-        self.delta = numpy.array([200.0, 50.0, 0.5, 0.00001, 0.03, 0.10])    # [dT, dG, dB, d_dy, dr]
+        self.delta = {"T":200.0, "G":50.0, "B":0.5, "dy":0.03, "r":0.10]}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
-        self.limits = [[2500.0, 6000.0], [300.0, 500.0], [0.0,4.0], [-10.0, 10.0], [-10.0, 10.0], [0.0, 10.0]]
-        self.floaters = numpy.array([True, True, True, False, True, True])
+        self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
+        self.floaters = numpy.array{"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = []
 
 
@@ -86,6 +86,7 @@ class spectralSynthesizer( object ):   # low resolution
         self.temps = numpy.array(range(2500, 4000, 100)+range(4000,6250, 250))
         self.gravs = numpy.array(range(300, 600, 50))
         self.bfields = numpy.array(numpy.arange(0, 4.5, 0.5))
+        self.ranges = {"T":self.temps, "G":self.gravs, "B":self.bfields}
 
     def binMOOGSpectrum(self, spectrum, native_wl, new_wl):
         retval = numpy.zeros(len(new_wl))
@@ -238,26 +239,35 @@ class spectralSynthesizer( object ):   # low resolution
         else:
             return x_sm, y_sm
 
-    def computeS(self, coords, **kwargs):
-        #Coords[0] = T
-        #Coords[1] = G
-        #Coords[2] = B
-        #Coords[3] = dx
-        #Coords[4] = dy
-        #Coords[5] = r
-        x_sm = self.features[self.currFeat]["wl"]
-        y_new = self.interpolatedModel(coords[0], coords[1], coords[2])
+    def computeS(self, coordinates, **kwargs):
+        TGBCoords = coordinates.TGBcoords
+        #TGBCoords["T"] = T
+        #TGBCoords["G"] = G
+        #TGBCoords["B"] = B
         
-        new_wl = self.x_window + coords[3]
-        overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
+        bandCoords = coordinates.bandCoords
+        #bandCoords[*]["dy"] = dy
+        #bandCoords[*]["r"] = r
 
-        synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coords[4]
-        if "plot" in kwargs:
-            obs = Gnuplot.Data(new_wl[overlap], self.flat[overlap], with_='lines')
-            sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
-            veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+coords[5])/(coords[5]+1.0), with_='lines')
-            kwargs["plot"].plot(obs, sim, veil)
-        return self.calcError(self.flat[overlap], (synthetic_spectrum+coords[5])/(coords[5]+1.0), self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+        retval = 0.0
+        for num in range(len(bandCoords))
+            self.currFeat = num
+            x_sm = self.features[self.currFeat]["wl"]
+            y_new = self.interpolatedModel(TGBcoords["T"], TGBcoords["G"], TGBcoords["B"])
+
+        
+            new_wl = self.[self.currFeat]x_window + self.features[self.currFeat]["x_offset"]
+            overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
+
+            synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coords["dy"]
+            if "plot" in kwargs:
+                obs = Gnuplot.Data(new_wl[overlap], self.flat[overlap], with_='lines')
+                sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
+                veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+coords["r"])/(coords["r"]+1.0), with_='lines')
+                kwargs["plot"].plot(obs, sim, veil)
+            retval += self.calcError(self.flat[self.currFeat][overlap],(synthetic_spectrum+bandCoords[self.currFeat]["r"])/(bandCoords[self.currFeat]["r"]+1.0),self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+
+        return retval
     
     def computeDeriv(self, coords, index):
         coords[index] += self.delta[index]
@@ -452,7 +462,7 @@ class spectralSynthesizer( object ):   # low resolution
                 raw_input()'''
 
         #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
-        initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,numpy.mean(veiling[order[0:20]])]
+        initial_guess = {"T":numpy.mean(Tval[order[0:20]]), "G":numpy.mean(Gval[order[0:20]]),"B":numpy.mean(Bval[order[0:20]])}
         return numpy.array(initial_guess)
 
 
@@ -460,33 +470,42 @@ class spectralSynthesizer( object ):   # low resolution
         #simplex_coords = [init_guess]
         #simplex_values = [self.computeS(init_guess)]
 
-        best_coords = []
-        best_values = []
-        bm = scipy.where(self.floaters == True)[0]
-        for i in range(len(bm)):
-            new_guess = init_guess.copy()
-            if (new_guess[bm[i]] +self.delta[bm[i]]/self.delta_factor) < self.limits[bm[i]][1]:
-                new_guess[bm[i]] += self.delta[bm[i]]/self.delta_factor
-            else:
-                new_guess[bm[i]] -= self.delta[bm[i]]/self.delta_factor
-            best_coords.append(new_guess)
-            best_values.append(self.computeS(new_guess))
+        coords = []
+        Svalues = []
+        for key in self.floaters.keys():
+            if self.floaters[key] == True:
+                new_TGBcoords = init_guess.copy()
+                bandCoords = {}
+                if key in init_guess:
+                    if (new_TGBcoords[key] + self.delta[key]) < self.limits[key][1]:
+                        new_TGBcoords[key] += self.delta[key]
+                    else:
+                        new_TGBcoords[key] -= self.delta[key]
+                    for num in range(len(self.features)):
+                        bandCoords{num} = {"dy":1.0, "r":0.05}
+                    simplexPoint = gridPoint(new_TGBcoords, bandCoords)
+                    coords.append(simplexPoint)
+                    Svalues.append(computeS(simplexPoint))
+                else:
+                    for num in range(len(self.features)):
+                        bandCoords[num] = {"dy":1.0, "r":0.05}
+                        if (bandCoords[key] + self.delta[key]) < self.limits[key][1]:
+                            bandCoords[key] += self.delta[key]
+                        else:
+                            bandCoords[key] -= self.delta[key]
+                        simplexPoint = gridPoint(new_TGBcoords, bandCoords)
+                        coords.append(simplexPoint)
+                        Svalues.append(computeS(simplexPoint))
 
         n_contractions = 0
-        print len(best_coords)
-        print best_coords
-        centroid = numpy.zeros(len(best_coords[0]))
+        centroid = numpy.zeros(coords[0].n_dims)
 
-        while (numpy.std(best_values) > 0.5):
-            order = numpy.argsort(best_values)
-            centroid = numpy.zeros(len(best_coords[0]))
-            for i in range(len(order)-1):
-                centroid += best_coords[order[i]]
-            centroid /= len(order)-1.0
+        while (numpy.std(Svalues) > 0.5):
+            order = numpy.argsort(Svalues)
+            centroid = self.findCentroid(coords)
             print centroid
 
             # Reflect about centroid
-            centroid_S = self.computeS(centroid, plot=plt)
             distance = centroid - best_coords[order[-1]]
             trial_1 = self.check_bounds(centroid + distance)
             S1 = self.computeS(trial_1)
@@ -554,27 +573,33 @@ class spectralSynthesizer( object ):   # low resolution
     def fitSpectrum(self, wl, flux, error, plt1, plt2, **kwargs):
         retval = []
         outfile = kwargs["outfile"]
+        # Gets the initial guess coordinates for both features
+        guess_coords = []
         for feat, num in zip(self.features, range(len(self.features))):
+            self.currFeat = num
             if (min(wl) < feat["xstart"]):
                 x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_star"], feat["slope_stop"], strongLines=feat["strongLines"], lineWidths=feat["linesWidhts"], errors=True)
 
                 self.x_window[num] = x_window
                 self.flat[num] = flat
                 self.z[num] = z
+                
+                kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
+                guess_coords.append(self.gridSearch(MODE='FINAL'))
+                
+        initial_guess = guess_coords[0]
+        best_coords = self.simplex(initial_guess, plt)
+        retval.append(best_coords)
+        print 'Best Fit Coordinates :', best_coords
 
-                if kwargs["modes"] == 'PREP':
-                    coordinates = []
-                    T_initial_guess = 4000.0
-                    G_initial_guess = 400.0
 
 
-    def fitSpectrum(self, wl, flux, error, plt, **kwargs):   # wl in microns
+    def prelimSearch(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
         outfile = kwargs["outfile"]
         for feat, num in zip(self.features, range(len(self.features))):
         #for feat, num in zip(self.features, range(len(self.features))):
             self.delta_factor = 1.0
-            chisq = []
             self.currFeat = num
             if ( min(wl) < feat["xstart"] ):
                 #chisq = numpy.zeros([len(feat["TandGandB"][0]), len(self.x_offsets), len(self.y_offsets), len(self.veilings)])
