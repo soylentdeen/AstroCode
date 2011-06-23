@@ -5,6 +5,7 @@ import numpy
 import scipy.integrate
 import Gnuplot
 import pickle
+import time
 
 
 def write_parfile(filename, **kwargs):
@@ -44,9 +45,16 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
         self.TGB = {"T":TGBcoords["T"], "G":TGBcoords["G"], "B":TGBcoords["B"]}
         self.bandCoords= {}
         self.n_dims = 3
-        for i in len(bandCoords):
+        for i in range(len(bandCoords)):
             self.bandCoords[i] = bandCoords[i]
             self.n_dims += len(bandCoords[i].keys())
+
+    def dump(self):
+        retval = 'T='+str(int(self.TGB["T"]))+', G='+str(int(self.TGB["G"]))+', B='+str(float(self.TGB["B"]))+'\n'
+        for i in range(len(self.bandCoords)):
+            retval += str(i)+', r = '+str(self.bandCoords[i]["r"])+'\n'
+
+        return retval
 
 class spectralSynthesizer( object ):   # low resolution
     def __init__(self):
@@ -60,12 +68,12 @@ class spectralSynthesizer( object ):   # low resolution
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.1816,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
-        self.delta = {"T":200.0, "G":50.0, "B":0.5, "dy":0.03, "r":0.10]}    # [dT, dG, dB, d_dy, dr]
+        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
+        self.delta = {"T":200.0, "G":50.0, "B":0.5, "dy":0.03, "r":0.10}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
-        self.floaters = numpy.array{"T":True, "G":True, "B":True, "dy":True, "r":True}
+        self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = []
 
 
@@ -240,7 +248,7 @@ class spectralSynthesizer( object ):   # low resolution
             return x_sm, y_sm
 
     def computeS(self, coordinates, **kwargs):
-        TGBCoords = coordinates.TGBcoords
+        TGBCoords = coordinates.TGB
         #TGBCoords["T"] = T
         #TGBCoords["G"] = G
         #TGBCoords["B"] = B
@@ -250,21 +258,22 @@ class spectralSynthesizer( object ):   # low resolution
         #bandCoords[*]["r"] = r
 
         retval = 0.0
-        for num in range(len(bandCoords))
+        for num in range(len(bandCoords)):
             self.currFeat = num
             x_sm = self.features[self.currFeat]["wl"]
-            y_new = self.interpolatedModel(TGBcoords["T"], TGBcoords["G"], TGBcoords["B"])
+            y_new = self.interpolatedModel(TGBCoords["T"], TGBCoords["G"], TGBCoords["B"])
 
         
-            new_wl = self.[self.currFeat]x_window + self.features[self.currFeat]["x_offset"]
+            new_wl = self.x_window[self.currFeat] + self.features[self.currFeat]["x_offset"]
             overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
 
-            synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coords["dy"]
+            synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*bandCoords[num]["dy"]
             if "plot" in kwargs:
-                obs = Gnuplot.Data(new_wl[overlap], self.flat[overlap], with_='lines')
+                obs = Gnuplot.Data(new_wl[overlap], self.flat[num][overlap], with_='lines')
                 sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
-                veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+coords["r"])/(coords["r"]+1.0), with_='lines')
+                veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+bandCoords[num]["r"])/(bandCoords[num]["r"]+1.0), with_='lines')
                 kwargs["plot"].plot(obs, sim, veil)
+                time.sleep(2.0)
             retval += self.calcError(self.flat[self.currFeat][overlap],(synthetic_spectrum+bandCoords[self.currFeat]["r"])/(bandCoords[self.currFeat]["r"]+1.0),self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
 
         return retval
@@ -463,7 +472,7 @@ class spectralSynthesizer( object ):   # low resolution
 
         #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
         initial_guess = {"T":numpy.mean(Tval[order[0:20]]), "G":numpy.mean(Gval[order[0:20]]),"B":numpy.mean(Bval[order[0:20]])}
-        return numpy.array(initial_guess)
+        return initial_guess
 
     def findCentroid(self, coords):
         T = 0.0
@@ -491,15 +500,15 @@ class spectralSynthesizer( object ):   # low resolution
             
     def reflect(self, centroid, coord, **kwargs):
         if kwargs["trial"] == 1:
-            new_T = 2*centroid.TGB["T"] - coord.TGB["T"]
-            new_G = 2*centroid.TGB["G"] - coord.TGB["G"]
-            new_B = 2*centroid.TGB["B"] - coord.TGB["B"]
-            n_feat = len(coords[0].bandCoords)
+            new_T = 2.0*centroid.TGB["T"] - coord.TGB["T"]
+            new_G = 2.0*centroid.TGB["G"] - coord.TGB["G"]
+            new_B = 2.0*centroid.TGB["B"] - coord.TGB["B"]
+            n_feat = len(coord.bandCoords)
             new_dy = numpy.zeros(n_feat)
             new_r = numpy.zeros(n_feat)
             for i in range(n_feat):
-                new_dy[i] = 2*centroid.bandCoords[i]["dy"] - coord.bandCoords[i]["dy"]
-                new_r[i] = 2*centroid.bandCoords[i]["r"] - coord.bandCoords[i]["r"]
+                new_dy[i] = 2.0*centroid.bandCoords[i]["dy"] - coord.bandCoords[i]["dy"]
+                new_r[i] = 2.0*centroid.bandCoords[i]["r"] - coord.bandCoords[i]["r"]
 
             TGB = {"T":new_T, "G":new_G, "B":new_B}
             bC = []
@@ -508,15 +517,32 @@ class spectralSynthesizer( object ):   # low resolution
 
             retval = gridPoint(TGB, bC)
         elif kwargs["trial"] == 2:
-            new_T = 2*centroid.TGB["T"] - coord.TGB["T"]
-            new_G = 2*centroid.TGB["G"] - coord.TGB["G"]
-            new_B = 2*centroid.TGB["B"] - coord.TGB["B"]
-            n_feat = len(coords[0].bandCoords)
+            new_T = 3.0*centroid.TGB["T"] - 2.0*coord.TGB["T"]
+            new_G = 3.0*centroid.TGB["G"] - 2.0*coord.TGB["G"]
+            new_B = 3.0*centroid.TGB["B"] - 2.0*coord.TGB["B"]
+            n_feat = len(coord.bandCoords)
             new_dy = numpy.zeros(n_feat)
             new_r = numpy.zeros(n_feat)
             for i in range(n_feat):
-                new_dy[i] = 2*centroid.bandCoords[i]["dy"] - coord.bandCoords[i]["dy"]
-                new_r[i] = 2*centroid.bandCoords[i]["r"] - coord.bandCoords[i]["r"]
+                new_dy[i] = 3.0*centroid.bandCoords[i]["dy"] - 2.0*coord.bandCoords[i]["dy"]
+                new_r[i] = 3.0*centroid.bandCoords[i]["r"] - 2.0*coord.bandCoords[i]["r"]
+
+            TGB = {"T":new_T, "G":new_G, "B":new_B}
+            bC = []
+            for i in range(n_feat):
+                bC.append({"dy":new_dy[i], "r":new_r[i]})
+            retval = gridPoint(TGB, bC)
+
+        elif kwargs["trial"] == 3:
+            new_T = centroid.TGB["T"] - (centroid.TGB["T"] - coord.TGB["T"])/2.0
+            new_G = centroid.TGB["G"] - (centroid.TGB["G"]-coord.TGB["G"])/2.0
+            new_B = centroid.TGB["B"] - (centroid.TGB["B"]-coord.TGB["B"])/2.0
+            n_feat = len(coord.bandCoords)
+            new_dy = numpy.zeros(n_feat)
+            new_r = numpy.zeros(n_feat)
+            for i in range(n_feat):
+                new_dy[i] = centroid.bandCoords[i]["dy"]-(centroid.bandCoords[i]["dy"]-coord.bandCoords[i]["dy"])/2.0
+                new_r[i] = centroid.bandCoords[i]["r"]-(centroid.bandCoords[i]["r"]-coord.bandCoords[i]["r"])/2.0
 
             TGB = {"T":new_T, "G":new_G, "B":new_B}
             bC = []
@@ -528,6 +554,11 @@ class spectralSynthesizer( object ):   # low resolution
         return retval
 
     def contract(self, centroid, coords):
+        for i in range(len(coords)):
+            newcoord = self.reflect(centroid, coords[i], trial=3)
+            coords[i] = newcoord
+
+        return coords
 
     def simplex(self, init_guess, plt):
         #simplex_coords = [init_guess]
@@ -538,45 +569,50 @@ class spectralSynthesizer( object ):   # low resolution
         for key in self.floaters.keys():
             if self.floaters[key] == True:
                 new_TGBcoords = init_guess.copy()
-                bandCoords = {}
                 if key in init_guess:
                     if (new_TGBcoords[key] + self.delta[key]) < self.limits[key][1]:
                         new_TGBcoords[key] += self.delta[key]
                     else:
                         new_TGBcoords[key] -= self.delta[key]
+                    bandCoords = []
                     for num in range(len(self.features)):
-                        bandCoords{num} = {"dy":1.0, "r":0.05}
+                        bandCoords.append({"dy":1.0, "r":0.05})
                     simplexPoint = gridPoint(new_TGBcoords, bandCoords)
                     coords.append(simplexPoint)
-                    Svalues.append(computeS(simplexPoint))
+                    Svalues.append(self.computeS(simplexPoint))
                 else:
                     for num in range(len(self.features)):
-                        bandCoords[num] = {"dy":1.0, "r":0.05}
-                        if (bandCoords[key] + self.delta[key]) < self.limits[key][1]:
-                            bandCoords[key] += self.delta[key]
+                        bandCoords = []
+                        for i in range(len(self.features)):
+                            bandCoords.append({"dy":1.0, "r":0.05})
+                        if (bandCoords[num][key] + self.delta[key]) < self.limits[key][1]:
+                            bandCoords[num][key] += self.delta[key]
                         else:
-                            bandCoords[key] -= self.delta[key]
+                            bandCoords[num][key] -= self.delta[key]
                         simplexPoint = gridPoint(new_TGBcoords, bandCoords)
                         coords.append(simplexPoint)
-                        Svalues.append(computeS(simplexPoint))
+                        Svalues.append(self.computeS(simplexPoint))
 
         n_contractions = 0
 
+        print len(coords)
         while (numpy.std(Svalues) > 0.5):
             order = numpy.argsort(Svalues)
             centroid = self.findCentroid(coords)
+            print centroid.dump()
+            junk = self.computeS(centroid, plot=plt)
 
             # Reflect about centroid
             trial_1 = self.reflect(centroid, coords[order[-1]], trial=1)
             S1 = self.computeS(trial_1)
             
-            if (S1 > best_values[order[-1]]):    # Try longer path along distance
+            if (S1 > Svalues[order[-1]]):    # Try longer path along distance
                 trial_2 = self.reflect(centroid, coords[order[-1]], trial=2)
                 S2 = self.computeS(trial_2)
-                if (S2 > best_values[order[-1]]):    # Try half the distance
+                if (S2 > Svalues[order[-1]]):    # Try half the distance
                     trial_3 = self.reflect(centroid, coords[order[-1]], trial=3)
                     S3 = self.computeS(trial_3)
-                    if (S3 > best_values[order[-1]]):     # Shrink?
+                    if (S3 > Svalues[order[-1]]):     # Shrink?
                         #self.delta_factor *= 2.0
                         if n_contractions <= 2:
                             coords = self.contract(centroid, coords)
@@ -586,18 +622,18 @@ class spectralSynthesizer( object ):   # low resolution
                             break
                     else:
                         coords[order[-1]] = trial_3
-                        Svalues[order[-1]] = self.computeS(trial_3)
+                        Svalues[order[-1]] = S3
                         print 'Trial 3'
                 else:
                     coords[order[-1]] = trial_2
-                    Svalues[order[-1]] = self.computeS(trial_2)
+                    Svalues[order[-1]] = S2
                     print 'Trial 2'
             else:
                 coords[order[-1]] = trial_1
-                Svalues[order[-1]] = self.computeS(trial_1)
+                Svalues[order[-1]] = S1
                 print 'Trial 1'
         
-            #print numpy.mean(best_values), numpy.std(best_values)
+            print numpy.mean(Svalues), numpy.std(Svalues)
 
         '''
         new_wl = self.x_window + centroid[3]
@@ -615,32 +651,43 @@ class spectralSynthesizer( object ):   # low resolution
         print covar
         raw_input()
         '''
+        retval = self.findCentroid(coords)
+        print retval.dump()
         return self.findCentroid(coords)
-                        
 
-    def fitSpectrum(self, wl, flux, error, plt1, plt2, **kwargs):
+    def fitSpectrum(self, wl, flux, error, plt, **kwargs):
         retval = []
         outfile = kwargs["outfile"]
         # Gets the initial guess coordinates for both features
         guess_coords = []
+        self.x_window = []
+        self.flat = []
+        self.z = []
         for feat, num in zip(self.features, range(len(self.features))):
             self.currFeat = num
             if (min(wl) < feat["xstart"]):
-                x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_star"], feat["slope_stop"], strongLines=feat["strongLines"], lineWidths=feat["linesWidhts"], errors=True)
+                x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
+                strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
 
-                self.x_window[num] = x_window
-                self.flat[num] = flat
-                self.z[num] = z
+                self.x_window.append(x_window)
+                self.flat.append(flat)
+                self.z.append(z)
+
+                x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 0.0)
+                x_sm = x_sm/10000.0                # convert MOOG wavelengths to microns
+                self.features[self.currFeat]["wl"] = x_sm
                 
                 kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
-                guess_coords.append(self.gridSearch(MODE='FINAL'))
+                guess_coords.append(self.gridSearch(MODE='FINAL', **kwargs))
                 
         initial_guess = guess_coords[0]
+        initial_guess["G"] += guess_coords[1]["G"]
+        initial_guess["G"] /= 2.0
         best_coords = self.simplex(initial_guess, plt)
         retval.append(best_coords)
-        print 'Best Fit Coordinates :', best_coords
+        #print 'Best Fit Coordinates :', best_coords
 
-
+        return retval
 
     def prelimSearch(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
@@ -690,21 +737,6 @@ class spectralSynthesizer( object ):   # low resolution
                     kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                     guess_coords = self.gridSearch(plot=plt,**kwargs)
 
-                if kwargs["mode"] == 'FINAL':
-                    x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 1.0)
-                    self.features[self.currFeat]["wl"] = x_sm/10000.0
-                    kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
-                    guess_coords=self.gridSearch(**kwargs)
-                    if self.currFeat == 1:
-                        guess_coords[0] = retval[-1][0]
-                        self.floaters[0] = False
-                    else:
-                        self.floaters[0] = True
-                    best_coords = self.simplex(guess_coords, plt)
-                    retval.append(best_coords)
-                    #best_coords = self.marquardt(chisq)
-                    print 'Best Fit Coordinates :', best_coords
-                else:
                     retval.append([0])
         return retval
 
