@@ -67,10 +67,11 @@ class spectralSynthesizer( object ):   # low resolution
         lineWidths = [[0.005, 0.005],[0.005, 0.005], [0.005, 0.005]]
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.1816,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
+        #comparePoints = [[[1.1816,1.1995],[1.2073,1.2087]], [[2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
-        self.delta = {"T":200.0, "G":50.0, "B":0.5, "dy":0.03, "r":0.10}    # [dT, dG, dB, d_dy, dr]
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
+        self.delta = {"T":200.0, "G":25.0, "B":0.25, "dy":0.01, "r":0.10}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
@@ -269,11 +270,20 @@ class spectralSynthesizer( object ):   # low resolution
 
             synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*bandCoords[num]["dy"]
             if "plot" in kwargs:
+                
                 obs = Gnuplot.Data(new_wl[overlap], self.flat[num][overlap], with_='lines')
                 sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
                 veil = Gnuplot.Data(new_wl[overlap], (synthetic_spectrum+bandCoords[num]["r"])/(bandCoords[num]["r"]+1.0), with_='lines')
-                kwargs["plot"].plot(obs, sim, veil)
-                time.sleep(2.0)
+                if "outnames" in kwargs:
+                    kwargs["plot"]('set terminal postscript color')
+                    print kwargs["outnames"][num]
+                    kwargs["plot"]('set out "'+kwargs["outnames"][num]+'.ps"')
+                    kwargs["plot"].plot(obs, sim, veil)
+                    kwargs["plot"]('set out')
+                    kwargs["plot"]('set terminal x11')
+                else:
+                    kwargs["plot"].plot(obs, sim, veil)
+                #time.sleep(2.0)
             retval += self.calcError(self.flat[self.currFeat][overlap],(synthetic_spectrum+bandCoords[self.currFeat]["r"])/(bandCoords[self.currFeat]["r"]+1.0),self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
 
         return retval
@@ -681,13 +691,24 @@ class spectralSynthesizer( object ):   # low resolution
                 guess_coords.append(self.gridSearch(MODE='FINAL', **kwargs))
                 
         initial_guess = guess_coords[0]
-        initial_guess["G"] += guess_coords[1]["G"]
-        initial_guess["G"] /= 2.0
+        #initial_guess["G"] += guess_coords[1]["G"]
+        initial_guess["G"] = 430.0 
+        initial_guess["B"] = 0.0
+        self.floaters["B"] = False
         best_coords = self.simplex(initial_guess, plt)
-        retval.append(best_coords)
+        retval = best_coords
         #print 'Best Fit Coordinates :', best_coords
 
-        return retval
+        outnames = []
+
+        kwargs["outfile"] = outfile
+
+        for num in range(len(self.features)):
+            outnames.append(kwargs["outfile"]+'_feat_'+str(self.features[num]["num"]))
+
+        error = self.computeS(best_coords, plot=plt, outnames=outnames)
+
+        return retval, error
 
     def prelimSearch(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
