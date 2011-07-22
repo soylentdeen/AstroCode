@@ -42,8 +42,8 @@ class spectralSynthesizer( object ):
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.157,1.17],[1.176,1.1995],[1.2073,1.2087]],[[1.482, 1.519]],[[1.571,1.599]], [[2.1765,2.18],[2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.23]], [[2.2425,2.2551],[2.2592, 2.2669]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
         self.delta = {"T":100.0, "G":20.0, "B":0.5, "dy":0.01, "r":0.05}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
@@ -259,7 +259,8 @@ class spectralSynthesizer( object ):
             overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
 
             synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*contLevel[num]
-            excess = self.veiling_SED(new_wl[overlap])*veiling
+            excess = self.compute_Excess(new_wl[overlap], TGBCoords["T"], veiling)
+            #excess = self.veiling_SED(new_wl[overlap])*veiling
             veiled = (synthetic_spectrum+excess)/(excess+1.0)
             '''
             if "plot" in kwargs:
@@ -267,11 +268,19 @@ class spectralSynthesizer( object ):
                 sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
                 veil = Gnuplot.Data(new_wl[overlap], veiled, with_='lines')
                 kwargs["plot"].plot(obs, sim, veil)
-                sleep(2.0)
+                time.sleep(2.0)
             '''
             retval += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
 
         return retval
+    
+    def compute_Excess(self, wl, Teff, veiling):
+        excess_BB = self.veiling_SED(wl)
+        star_BB = SpectralTools.blackBody(wl = wl/10000.0, T=Teff, outUnits="Energy")
+        zp = SpectralTools.blackBody(wl=2.2/10000.0, T=Teff, outUnits="Energy")
+        star_BB /= zp
+        excess = excess_BB/star_BB*veiling
+        return excess
     
     def computeDeriv(self, coords, index):
         coords[index] += self.delta[index]
@@ -570,7 +579,7 @@ class spectralSynthesizer( object ):
                     contLevels = []
                     for num in range(len(self.features)):
                         contLevels.append(1.0)
-                    veil = 0.05
+                    veil = 0.005
                     simplexPoint = gridPoint(new_TGBcoords, contLevels, veil)
                     coords.append(simplexPoint)
                     Svalues.append(self.computeS(simplexPoint))
@@ -603,10 +612,10 @@ class spectralSynthesizer( object ):
         n_contractions = 0
 
         print len(coords)
-        while (numpy.std(Svalues) > 0.5):
+        while (numpy.std(Svalues) > 2.0):
             order = numpy.argsort(Svalues)
             centroid = self.findCentroid(coords)
-            #print centroid.dump()
+            print centroid.dump()
             junk = self.computeS(centroid, plot=plt)
 
             # Reflect about centroid
@@ -660,10 +669,9 @@ class spectralSynthesizer( object ):
         '''
         retval = self.findCentroid(coords)
         print retval.dump()
-        return self.findCentroid(coords)
+        return retval
 
     def fitSpectrum(self, wl, flux, error, plt, **kwargs):
-        retval = []
         outfile = kwargs["outfile"]
         # Gets the initial guess coordinates for both features
         guess_coords = []
@@ -689,17 +697,16 @@ class spectralSynthesizer( object ):
                 
         initial_guess = {}
         initial_guess["T"] = numpy.mean([coord["T"] for coord in guess_coords])
-        initial_guess["G"] = numpy.mean([coord["G"] for coord in guess_coords])
+        initial_guess["G"] = guess_coords[1]["G"]
         initial_guess["B"] = numpy.mean([coord["B"] for coord in guess_coords])
-        print guess_coords
-        print initial_guess
-        raw_input()
-        retval.append(initial_guess)
-        #best_coords = self.simplex(initial_guess, plt)
-        #retval.append(best_coords)
-        #print 'Best Fit Coordinates :', best_coords
+        print "Guesses from Grid Search :", guess_coords
+        print "Initial Guess :", initial_guess
+        #raw_input()
+        #retval.append(initial_guess)
+        best_coords = self.simplex(initial_guess, plt)
+        print 'Best Fit Coordinates :', best_coords
 
-        return retval
+        return best_coords
 
     def prelimSearch(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
