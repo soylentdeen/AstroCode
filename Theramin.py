@@ -7,6 +7,7 @@ import scipy.integrate
 import Gnuplot
 import pickle
 import time
+import copy
 
 
 class gridPoint( object ):    # Object which contains information about a Chi-Squared grid point
@@ -29,6 +30,7 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
 
         return retval
 
+
 class spectralSynthesizer( object ):
     def __init__(self):
         feat_num = [1, 2, 3, 4, 5]
@@ -43,7 +45,7 @@ class spectralSynthesizer( object ):
         comparePoints = [[[1.157,1.17],[1.176,1.1995],[1.2073,1.2087]],[[1.482, 1.519]],[[1.571,1.599]], [[2.1765,2.18],[2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.23]], [[2.2425,2.2551],[2.2592, 2.2669]]]
 
         self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
+        self.dataBaseDir='/home/deen/Data/StarFormation/Ophiuchus/bfields/'
         self.delta = {"T":100.0, "G":20.0, "B":0.5, "dy":0.01, "r":0.05}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
@@ -297,43 +299,152 @@ class spectralSynthesizer( object ):
              i = 3 = veiling
              i = 4 ... n -> dy_i, dy_(n-4)
         '''
-        if( i == j ):
-            ifactor = 1.0
-            while (((coords[i] - self.delta[i]*ifactor) < self.limits[i][0]) | ((coords[i]+self.delta[i]*ifactor) >
-            self.limits[i][1])):
-                ifactor *= 0.8
-            S2 = self.computeS(coords)
-            coords[i] += self.delta[i]*ifactor
-            S1 = self.computeS(coords)
-            coords[i] -= 2*self.delta[i]*ifactor
-            S3 = self.computeS(coords)
-            coords[i] += self.delta[i]*ifactor
-            return (S1-2*S2+S3)/(self.delta[i]*self.delta[i]*ifactor*ifactor)
+        keys = {0:"T", 1:"G", 2:"B", 3:"r"}
+        n = 4
+        for key in coords.contLevel.keys():
+            keys[n] = key
+            n += 1
+        key_i = keys[i]
+        key_j = keys[j]
+        if( key_i == key_j ):
+            if ( key_i in ["T", "G", "B"]):
+                ifactor = 1.0
+                while (((coords.TGB[key_i] - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
+                ((coords.TGB[key_i]+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
+                    ifactor *= 0.8
+                coord_plus = copy.deepcopy(coords)
+                coord_plus.TGB[key_i] += self.delta[key_i]*ifactor
+                S_plus = self.computeS(coord_plus)
+                coord = copy.deepcopy(coords)
+                S = self.computeS(coord)
+                coord_minus = copy.deepcopy(coords)
+                coord_minus.TGB[key_i] -= self.delta[key_i]*ifactor
+                S_minus = self.computeS(coord_minus)
+                denominator = (self.delta[key_i]*ifactor)**2.0
+            elif ( key_i == 'r'):
+                ifactor = 1.0
+                while (((coords.veiling - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
+                ((coords.veiling+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
+                    ifactor *= 0.8
+                coord_plus = copy.deepcopy(coords)
+                coord_plus.veiling += self.delta[key_i]*ifactor
+                S_plus = self.computeS(coord_plus)
+                coord = copy.deepcopy(coords)
+                S = self.computeS(coord)
+                coord_minus = copy.deepcopy(coords)
+                coord_minus.veiling -= self.delta[key_i]*ifactor
+                S_minus = self.computeS(coord_minus)
+                denominator = (self.delta[key_i]*ifactor)**2.0
+            elif ( key_i in coords.contLevel.keys() ):
+                ifactor = 1.0
+                while (((coords.contLevel[key_i] - self.delta['dy']*ifactor) < self.limits['dy'][0]) |
+                ((coords.contLevel[key_i]+self.delta['dy']*ifactor) > self.limits['dy'][1])):
+                    ifactor *= 0.8
+                coord_plus = copy.deepcopy(coords)
+                coord_plus.contLevel[key_i] += self.delta['dy']*ifactor
+                S_plus = self.computeS(coord_plus)
+                coord = copy.deepcopy(coords)
+                S = self.computeS(coord)
+                coord_minus = copy.deepcopy(coords)
+                coord_minus.contLevel[key_i] -= self.delta['dy']*ifactor
+                S_minus = self.computeS(coord_minus)
+                denominator = (self.delta['dy']*ifactor)**2.0
+
+            print coord_plus.dump()
+            print coord.dump()
+            print coord_minus.dump()
+            print 'S values:'
+            print 'S+ : ', str(S_plus)
+            print 'S : ', str(S)
+            print 'S- : ', str(S_minus)
+            print 'Deonominator :', str(denominator)
+
+            return (S_plus-2*S+S_minus)/denominator
         else:
             ifactor = 1.0
-            while (((coords[i] - self.delta[i]*ifactor) < self.limits[i][0]) | ((coords[i]+self.delta[i]*ifactor) >
-            self.limits[i][1])):
-                ifactor *= 0.8
+            if ( key_i in ["T", "G", "B"]):
+                while (((coords.TGB[key_i] - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
+                ((coords.TGB[key_i]+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
+                    ifactor *= 0.8
+                coord_one = copy.deepcopy(coords)
+                coord_two = copy.deepcopy(coords)
+                coord_three = copy.deepcopy(coords)
+                coord_four = copy.deepcopy(coords)
+                coord_one.TGB[key_i] += self.delta[key_i]*ifactor
+                coord_three.TGB[key_i] += self.delta[key_i]*ifactor
+                coord_two.TGB[key_i] -= self.delta[key_i]*ifactor
+                coord_four.TGB[key_i] -= self.delta[key_i]*ifactor
+                denominator = self.delta[key_i]*ifactor
+            elif ( key_i == 'r'):
+                while (((coords.veiling - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
+                ((coords.veiling+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
+                    ifactor *= 0.8
+                coord_one = copy.deepcopy(coords)
+                coord_two = copy.deepcopy(coords)
+                coord_three = copy.deepcopy(coords)
+                coord_four = copy.deepcopy(coords)
+                coord_one.veiling += self.delta[key_i]*ifactor
+                coord_three.veiling += self.delta[key_i]*ifactor
+                coord_two.veiling -= self.delta[key_i]*ifactor
+                coord_four.veiling -= self.delta[key_i]*ifactor
+                denominator = self.delta[key_i]*ifactor
+            elif ( key_i in coords.contLevel.keys() ):
+                while (((coords.contLevel[key_i] - self.delta['dy']*ifactor) < self.limits['dy'][0]) |
+                ((coords.contLevel[key_i]+self.delta['dy']*ifactor) > self.limits['dy'][1])):
+                    ifactor *= 0.8
+                coord_one = copy.deepcopy(coords)
+                coord_two = copy.deepcopy(coords)
+                coord_three = copy.deepcopy(coords)
+                coord_four = copy.deepcopy(coords)
+                coord_one.contLevel[key_i] += self.delta['dy']*ifactor
+                coord_three.contLevel[key_i] += self.delta['dy']*ifactor
+                coord_two.contLevel[key_i] -= self.delta['dy']*ifactor
+                coord_four.contLevel[key_i] -= self.delta['dy']*ifactor
+                denominator = self.delta['dy']*ifactor
+
             jfactor = 1.0
-            while (((coords[j] - self.delta[j]*jfactor) < self.limits[j][0]) | ((coords[j]+self.delta[j]*jfactor) >
-            self.limits[j][1])):
-                jfactor *= 0.8
-            coords[i] += self.delta[i]*ifactor
-            coords[j] += self.delta[j]*jfactor
-            S1 = self.computeS(coords)
+            if ( key_j in ["T", "G", "B"]):
+                while (((coords.TGB[key_j] - self.delta[key_j]*jfactor) < self.limits[key_j][0]) |
+                ((coords.TGB[key_j]+self.delta[key_j]*jfactor) > self.limits[key_j][1])):
+                    jfactor *= 0.8
+                coord_one.TGB[key_j] += self.delta[key_j]*jfactor
+                coord_two.TGB[key_j] += self.delta[key_j]*jfactor
+                coord_three.TGB[key_j] -= self.delta[key_j]*jfactor
+                coord_four.TGB[key_j] -= self.delta[key_j]*jfactor
+                denominator *= self.delta[key_j]*jfactor
+            elif ( key_j == 'r'):
+                while (((coords.veiling - self.delta[key_j]*jfactor) < self.limits[key_j][0]) |
+                ((coords.veiling+self.delta[key_j]*jfactor) > self.limits[key_j][1])):
+                    jfactor *= 0.8
+                coord_one.veiling += self.delta[key_j]*jfactor
+                coord_two.veiling += self.delta[key_j]*jfactor
+                coord_three.veiling -= self.delta[key_j]*jfactor
+                coord_four.veiling -= self.delta[key_j]*jfactor
+                denominator *= self.delta[key_j]*jfactor
+            elif ( key_j in coords.contLevel.keys() ):
+                while (((coords.contLevel[key_j] - self.delta['dy']*jfactor) < self.limits['dy'][0]) |
+                ((coords.contLevel[key_j]+self.delta['dy']*jfactor) > self.limits['dy'][1])):
+                    jfactor *= 0.8
+                coord_one.contLevel[key_j] += self.delta['dy']*jfactor
+                coord_two.contLevel[key_j] += self.delta['dy']*jfactor
+                coord_three.contLevel[key_j] -= self.delta['dy']*jfactor
+                coord_four.contLevel[key_j] -= self.delta['dy']*jfactor
+                denominator *= self.delta['dy']*jfactor
 
-            coords[i] -= 2.0*self.delta[i]*ifactor
-            S2 = self.computeS(coords)
+            S1 = self.computeS(coord_one)
+            S2 = self.computeS(coord_two)
+            S3 = self.computeS(coord_three)
+            S4 = self.computeS(coord_four)
 
-            coords[j] -= 2.0*self.delta[j]*jfactor
-            S4 = self.computeS(coords)
+            print 'S values:'
+            print 'S1 : ', str(S1)
+            print 'S2 : ', str(S2)
+            print 'S3 : ', str(S3)
+            print 'S4 : ', str(S3)
+            print 'Deonominator :', str(denominator)
 
-            coords[i] += self.delta[i]*ifactor
-            S3 = self.computeS(coords)
 
-            coords[j] += self.delta[j]*jfactor
-
-            return (S1 - S2 - S3 + S4)/(4*(self.delta[i]*ifactor)*(self.delta[j]*jfactor))
+            return (S1 - S2 - S3 + S4)/(4*denominator)
 
     def computeGradient(self, coords):
         G = numpy.zeros(len(coords))
@@ -344,7 +455,7 @@ class spectralSynthesizer( object ):
         return numpy.matrix(G)
 
     def computeHessian(self, coords):
-        new_coords = coords.copy()
+        new_coords = copy.deepcopy(coords)
         H = numpy.zeros([coords.n_dims,coords.n_dims])
 
         for i in range(coords.n_dims):
@@ -356,7 +467,7 @@ class spectralSynthesizer( object ):
 
     def computeCovariance(self, minimum):
         retval = self.computeHessian(minimum)
-
+        print asdf
         return retval
 
     def marquardt(self, chisq):
@@ -453,11 +564,9 @@ class spectralSynthesizer( object ):
                             y_sm = self.readMOOGModel(T, G, B, axis ='y')
                             synthetic_spectrum = self.binMOOGSpectrum(y_sm, x_sm, new_wl[overlap])
                             #Calculate the initial guess for the veiling
-                            veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum,
-                            new_wl[overlap],self.features[self.currFeat]["comparePoints"]))
+                            veiling.append(self.calcVeiling(self.flat[overlap], synthetic_spectrum,new_wl[overlap],self.features[self.currFeat]["comparePoints"]))
                             S.append(self.calcError(self.flat[overlap], (synthetic_spectrum+veiling[-1])/(veiling[-1]+1.0),
-                            self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"],
-                            plt = kwargs["plot"]))
+                            self.z[overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"]))
                             Tval.append(T)
                             Gval.append(G)
                             Bval.append(B)
@@ -484,7 +593,7 @@ class spectralSynthesizer( object ):
                 raw_input()'''
 
         #initial_guess = [numpy.mean(Tval[order[0:20]]), numpy.mean(Gval[order[0:20]]), numpy.mean(Bval[order[0:20]]), x_offset, 1.00,0.00]
-        initial_guess = {"T":numpy.mean(Tval[order[0:20]]), "G":numpy.mean(Gval[order[0:20]]),"B":numpy.mean(Bval[order[0:20]])}
+        initial_guess = {"T":numpy.mean(Tval[order[0:5]]),"G":numpy.mean(Gval[order[0:5]]),"B":numpy.mean(Bval[order[0:5]])}
         return initial_guess
 
     def findCentroid(self, coords):
@@ -619,7 +728,7 @@ class spectralSynthesizer( object ):
         n_contractions = 0
 
         print len(coords)
-        while (numpy.std(Svalues) > 1.5):
+        while (numpy.std(Svalues) > 10.0):
             print numpy.mean(Svalues), numpy.std(Svalues)
             order = numpy.argsort(Svalues)
             centroid = self.findCentroid(coords)
@@ -728,6 +837,7 @@ class spectralSynthesizer( object ):
         print "Initial Guess :", initial_guess
         #retval.append(initial_guess)
         best_coords = self.simplex(initial_guess, plt)
+        covariance = self.computeCovariance(best_coords)
         print 'Best Fit Coordinates :', best_coords
 
         return best_coords
@@ -735,8 +845,8 @@ class spectralSynthesizer( object ):
     def prelimSearch(self, wl, flux, error, plt, **kwargs):   # wl in microns
         retval = []
         outfile = kwargs["outfile"]
-        for feat, num in zip(self.features, range(len(self.features))):
-        #for feat, num in zip(self.features, range(len(self.features))):
+        for num in self.features.keys():
+            feat = self.features[num]
             self.delta_factor = 1.0
             self.currFeat = num
             if ( min(wl) < feat["xstart"] ):
@@ -782,4 +892,3 @@ class spectralSynthesizer( object ):
 
                     retval.append([0])
         return retval
-
