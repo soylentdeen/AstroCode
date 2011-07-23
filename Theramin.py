@@ -42,8 +42,8 @@ class spectralSynthesizer( object ):
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.157,1.17],[1.176,1.1995],[1.2073,1.2087]],[[1.482, 1.519]],[[1.571,1.599]], [[2.1765,2.18],[2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.23]], [[2.2425,2.2551],[2.2592, 2.2669]]]
 
-        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/TWA/bfields/'
+        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
+        self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
         self.delta = {"T":100.0, "G":20.0, "B":0.5, "dy":0.01, "r":0.05}    # [dT, dG, dB, d_dy, dr]
         self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.98, 1.02], "r":[0.0, 10.0]}
@@ -294,6 +294,11 @@ class spectralSynthesizer( object ):
         return (S1-S2)/(2*self.delta[index])
 
     def compute2ndDeriv(self, coords, i, j):
+        '''
+             i = 0, 1, 2 -> T, G, B
+             i = 3 = veiling
+             i = 4 ... n -> dy_i, dy_(n-4)
+        '''
         if( i == j ):
             ifactor = 1.0
             while (((coords[i] - self.delta[i]*ifactor) < self.limits[i][0]) | ((coords[i]+self.delta[i]*ifactor) >
@@ -341,15 +346,20 @@ class spectralSynthesizer( object ):
         return numpy.matrix(G)
 
     def computeHessian(self, coords):
-        new_coords = coords
-        H = numpy.zeros([len(coords),len(coords)])
+        new_coords = coords.copy()
+        H = numpy.zeros([coords.n_dims,coords.n_dims])
 
-        for i in range(len(coords)):
-            for j in range(len(coords)):
+        for i in range(coords.n_dims):
+            for j in range(coords.n_dims):
                 H[i,j] = self.compute2ndDeriv(new_coords, i, j)
                 print i, j, H[i,j]
 
         return numpy.matrix(H)
+
+    def computeCovariance(self, minimum):
+        retval = self.computeHessian(minimum)
+
+        return retval
 
     def marquardt(self, chisq):
         self.alpha = 0.01
@@ -701,7 +711,7 @@ class spectralSynthesizer( object ):
         initial_guess["B"] = numpy.mean([coord["B"] for coord in guess_coords])
         print "Guesses from Grid Search :", guess_coords
         print "Initial Guess :", initial_guess
-        #raw_input()
+        raw_input()
         #retval.append(initial_guess)
         best_coords = self.simplex(initial_guess, plt)
         print 'Best Fit Coordinates :', best_coords
