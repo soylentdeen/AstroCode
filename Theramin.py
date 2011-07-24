@@ -43,6 +43,7 @@ class spectralSynthesizer( object ):
         lineWidths = [[0.005, 0.005, 0.005, 0.005, 0.005, 0.005], [0.005, 0.005, 0.01], [0.005, 0.005],[0.005, 0.005],[0.005, 0.005,0.01]]
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.157,1.17],[1.176,1.1995],[1.2073,1.2087]],[[1.482, 1.519]],[[1.571,1.599]], [[2.1765,2.18],[2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.23]], [[2.2425,2.2551],[2.2592, 2.2669]]]
+        tempWeight = [1.0, 1.0, 1.0, 1.0, 0.5]
 
         self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/deen/Data/StarFormation/Ophiuchus/bfields/'
@@ -67,6 +68,7 @@ class spectralSynthesizer( object ):
             feat["strongLines"] = strongLines[i]
             feat["lineWidths"] = lineWidths[i]
             feat["comparePoints"] = comparePoints[i]
+            feat["tempWeight"] = tempWeight[i]
             self.features[feat_num[i]] = feat
 
         self.temps = numpy.array(range(2500, 4000, 100)+range(4000,6250, 250))
@@ -171,69 +173,78 @@ class spectralSynthesizer( object ):
         return veil[0]
 
     def interpolatedModel(self, T, G, B):
-        #choose bracketing temperatures
-        if not(T in self.temps):
-            Tlow = max(self.temps[scipy.where(self.temps <= T)])
-            Thigh = min(self.temps[scipy.where(self.temps >= T)])
+        if ( (self.interpolated_model[self.currFeat]["T"] != T) | (self.interpolated_model[self.currFeat]["G"] != G) |
+        (self.interpolated_model[self.currFeat]["B"] != B) ):
+            
+            self.interpolated_model[self.currFeat]["T"] = T
+            self.interpolated_model[self.currFeat]["G"] = G
+            self.interpolated_model[self.currFeat]["B"] = B
+            #choose bracketing temperatures
+            if not(T in self.temps):
+                Tlow = max(self.temps[scipy.where(self.temps <= T)])
+                Thigh = min(self.temps[scipy.where(self.temps >= T)])
+            else:
+                Tlow = Thigh = T
+
+            #choose bracketing surface gravities
+            if not(G in self.gravs):
+                Glow = max(self.gravs[scipy.where(self.gravs <= G)])
+                Ghigh = min(self.gravs[scipy.where(self.gravs >= G)])
+            else:
+                Glow = Ghigh = G
+
+            #choose bracketing B-fields
+            if not(B in self.bfields):
+                Blow = max(self.bfields[scipy.where(self.bfields <= B)])
+                Bhigh  = min(self.bfields[scipy.where(self.bfields >= B)])
+            else:
+                Blow = Bhigh = B
+
+            #interpolate 
+            y1 = self.readMOOGModel(Tlow, Glow, Blow, axis ='y')
+            y2 = self.readMOOGModel(Thigh, Glow, Blow, axis ='y')
+            y3 = self.readMOOGModel(Tlow, Ghigh, Blow, axis ='y')
+            y4 = self.readMOOGModel(Thigh, Ghigh, Blow, axis ='y')
+            y5 = self.readMOOGModel(Tlow, Glow, Bhigh, axis ='y')
+            y6 = self.readMOOGModel(Thigh, Glow, Bhigh, axis ='y')
+            y7 = self.readMOOGModel(Tlow, Ghigh, Bhigh, axis ='y')
+            y8 = self.readMOOGModel(Thigh, Ghigh, Bhigh, axis ='y')
+
+            new_y = numpy.zeros(len(y1))
+            for i in range(len(y1)):
+                if y1[i] == y2[i]:
+                    y12 = y1[i]
+                else:
+                    y12 = scipy.interpolate.interp1d([Tlow, Thigh], [y1[i], y2[i]])(T)
+                if y3[i] == y4[i]:
+                    y34 = y3[i]
+                else:
+                    y34 = scipy.interpolate.interp1d([Tlow, Thigh], [y3[i], y4[i]])(T)
+                if y5[i] == y6[i]:
+                    y56 = y5[i]
+                else:
+                    y56 = scipy.interpolate.interp1d([Tlow, Thigh], [y5[i], y6[i]])(T)
+                if y7[i] == y8[i]:
+                    y78 = y7[i]
+                else:
+                    y78 = scipy.interpolate.interp1d([Tlow, Thigh], [y7[i], y8[i]])(T)
+
+                if (y12==y34):
+                    y1234 = y12
+                else:
+                    y1234 = scipy.interpolate.interp1d([Glow, Ghigh], [y12, y34])(G)
+                if (y56 == y78):
+                    y5678 = y56
+                else:
+                    y5678 = scipy.interpolate.interp1d([Glow, Ghigh], [y56, y78])(G)
+                if (y1234==y5678):
+                    new_y[i] = y1234
+                else:
+                    new_y[i] = scipy.interpolate.interp1d([Blow, Bhigh], [y1234, y5678])(B)
+
+            self.interpolated_model[self.currFeat]["new_y"] = new_y
         else:
-            Tlow = Thigh = T
-
-        #choose bracketing surface gravities
-        if not(G in self.gravs):
-            Glow = max(self.gravs[scipy.where(self.gravs <= G)])
-            Ghigh = min(self.gravs[scipy.where(self.gravs >= G)])
-        else:
-            Glow = Ghigh = G
-
-        #choose bracketing B-fields
-        if not(B in self.bfields):
-            Blow = max(self.bfields[scipy.where(self.bfields <= B)])
-            Bhigh  = min(self.bfields[scipy.where(self.bfields >= B)])
-        else:
-            Blow = Bhigh = B
-
-        #interpolate 
-        y1 = self.readMOOGModel(Tlow, Glow, Blow, axis ='y')
-        y2 = self.readMOOGModel(Thigh, Glow, Blow, axis ='y')
-        y3 = self.readMOOGModel(Tlow, Ghigh, Blow, axis ='y')
-        y4 = self.readMOOGModel(Thigh, Ghigh, Blow, axis ='y')
-        y5 = self.readMOOGModel(Tlow, Glow, Bhigh, axis ='y')
-        y6 = self.readMOOGModel(Thigh, Glow, Bhigh, axis ='y')
-        y7 = self.readMOOGModel(Tlow, Ghigh, Bhigh, axis ='y')
-        y8 = self.readMOOGModel(Thigh, Ghigh, Bhigh, axis ='y')
-
-        new_y = numpy.zeros(len(y1))
-        for i in range(len(y1)):
-            if y1[i] == y2[i]:
-                y12 = y1[i]
-            else:
-                y12 = scipy.interpolate.interp1d([Tlow, Thigh], [y1[i], y2[i]])(T)
-            if y3[i] == y4[i]:
-                y34 = y3[i]
-            else:
-                y34 = scipy.interpolate.interp1d([Tlow, Thigh], [y3[i], y4[i]])(T)
-            if y5[i] == y6[i]:
-                y56 = y5[i]
-            else:
-                y56 = scipy.interpolate.interp1d([Tlow, Thigh], [y5[i], y6[i]])(T)
-            if y7[i] == y8[i]:
-                y78 = y7[i]
-            else:
-                y78 = scipy.interpolate.interp1d([Tlow, Thigh], [y7[i], y8[i]])(T)
-
-            if (y12==y34):
-                y1234 = y12
-            else:
-                y1234 = scipy.interpolate.interp1d([Glow, Ghigh], [y12, y34])(G)
-            if (y56 == y78):
-                y5678 = y56
-            else:
-                y5678 = scipy.interpolate.interp1d([Glow, Ghigh], [y56, y78])(G)
-            if (y1234==y5678):
-                new_y[i] = y1234
-            else:
-                new_y[i] = scipy.interpolate.interp1d([Blow, Bhigh], [y1234, y5678])(B)
-
+            new_y = self.interpolated_model[self.currFeat]["new_y"]
         return new_y
 
     def readMOOGModel(self, T, G, B, **kwargs):
@@ -259,7 +270,6 @@ class spectralSynthesizer( object ):
 
             synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coordinates.contLevel[num]
             excess = self.compute_Excess(new_wl[overlap], coordinates.TGB["T"], coordinates.veiling)
-            #excess = self.veiling_SED(new_wl[overlap])*veiling
             veiled = (synthetic_spectrum+excess)/(excess+1.0)
             #'''
             if "plot" in kwargs:
@@ -440,7 +450,7 @@ class spectralSynthesizer( object ):
             print 'S1 : ', str(S1)
             print 'S2 : ', str(S2)
             print 'S3 : ', str(S3)
-            print 'S4 : ', str(S3)
+            print 'S4 : ', str(S4)
             print 'Deonominator :', str(denominator)
 
 
@@ -459,8 +469,8 @@ class spectralSynthesizer( object ):
         H = numpy.zeros([coords.n_dims,coords.n_dims])
 
         for i in range(coords.n_dims):
-            for j in range(coords.n_dims):
-                H[i,j] = self.compute2ndDeriv(new_coords, i, j)
+            for j in numpy.arange(coords.n_dims - i) + i:
+                H[i,j] = H[j,i] = self.compute2ndDeriv(new_coords, i, j)
                 print i, j, H[i,j]
 
         return numpy.matrix(H)
@@ -658,13 +668,13 @@ class spectralSynthesizer( object ):
             new_G = centroid.TGB["G"] - (centroid.TGB["G"]-coord.TGB["G"])/2.0
             new_B = centroid.TGB["B"] - (centroid.TGB["B"]-coord.TGB["B"])/2.0
             n_feat = len(coord.contLevel)
-            new_dy = {key:0.0 for key in coords.contLevel.keys()}
+            new_dy = {key:0.0 for key in coord.contLevel.keys()}
             new_r = centroid.veiling - (centroid.veiling-coord.veiling)/2.0
             for i in coord.contLevel.keys():
                 new_dy[i] = centroid.contLevel[i]-(centroid.contLevel[i]-coord.contLevel[i])/2.0
 
             TGB = {"T":new_T, "G":new_G, "B":new_B}
-            cL = {key:0.0 for key in coords.contLevel.keys()}
+            cL = {key:0.0 for key in coord.contLevel.keys()}
             for i in coord.contLevel.keys():
                 cL[i] = new_dy[i]
             retval = gridPoint(TGB, cL, new_r)
@@ -678,15 +688,27 @@ class spectralSynthesizer( object ):
 
         return coords
 
-    def simplex(self, init_guess, plt):
+    def simplex(self, guess, plt, **kwargs):
         #simplex_coords = [init_guess]
         #simplex_values = [self.computeS(init_guess)]
+        if kwargs["mode"] == 'CONTINUUM':
+            self.floaters["T"] = False
+            self.floaters["G"] = False
+            self.floaters["B"] = False
+            self.floaters["dy"] = True
+            self.floaters["r"] = False
+        elif kwargs["mode"] == 'FINAL':
+            self.floaters["T"] = True 
+            self.floaters["G"] = True
+            self.floaters["B"] = True
+            self.floaters["dy"] = True
+            self.floaters["r"] = True
 
         coords = []
         Svalues = []
         for key in self.floaters.keys():
             if self.floaters[key] == True:
-                new_TGBcoords = {"T":init_guess["T"], "G":init_guess["G"], "B":init_guess["B"]}
+                new_TGBcoords = {"T":guess.TGB["T"], "G":guess.TGB["G"], "B":guess.TGB["B"]}
                 if key in new_TGBcoords:
                     if (new_TGBcoords[key] + self.delta[key]) < self.limits[key][1]:
                         new_TGBcoords[key] += self.delta[key]
@@ -694,8 +716,8 @@ class spectralSynthesizer( object ):
                         new_TGBcoords[key] -= self.delta[key]
                     contLevels = {}
                     for num in self.x_window.keys():
-                        contLevels[num] = 1.0
-                    veil = init_guess["r"]
+                        contLevels[num] = guess.contLevel[num]
+                    veil = guess.veiling
                     simplexPoint = gridPoint(new_TGBcoords, contLevels, veil)
                     coords.append(simplexPoint)
                     Svalues.append(self.computeS(simplexPoint))
@@ -703,20 +725,20 @@ class spectralSynthesizer( object ):
                     for num in self.x_window.keys():
                         contLevels = {}
                         for i in self.x_window.keys():
-                            contLevels[i] = 1.0
+                            contLevels[i] = guess.contLevel[i]
                         if (contLevels[num] + self.delta["dy"]) < self.limits["dy"][1]:
                             contLevels[num] += self.delta["dy"]
                         else:
                             contLevels[num] -= self.delta["dy"]
-                        veil = init_guess["r"]
+                        veil = guess.veiling
                         simplexPoint = gridPoint(new_TGBcoords, contLevels, veil)
                         coords.append(simplexPoint)
                         Svalues.append(self.computeS(simplexPoint))
                 elif key == 'r':
                     contLevels = {}
                     for i in self.x_window.keys():
-                        contLevels[i] = 1.0
-                    veil = init_guess["r"]
+                        contLevels[i] = guess.contLevel[i]
+                    veil = guess.veiling
                     if (veil + self.delta["r"]) < self.limits["r"][1]:
                         veil += self.delta["r"]
                     else:
@@ -728,7 +750,7 @@ class spectralSynthesizer( object ):
         n_contractions = 0
 
         print len(coords)
-        while (numpy.std(Svalues) > 10.0):
+        while (numpy.std(Svalues) > 1.0):
             print numpy.mean(Svalues), numpy.std(Svalues)
             order = numpy.argsort(Svalues)
             centroid = self.findCentroid(coords)
@@ -770,22 +792,6 @@ class spectralSynthesizer( object ):
         junk = self.computeS(retval, plot=plt)
         print numpy.mean(Svalues), numpy.std(Svalues)
 
-        '''
-        new_wl = self.x_window + centroid[3]
-        overlap = scipy.where( (new_wl > min(self.features[self.currFeat]["wl"])) & (new_wl < max(self.features[self.currFeat]["wl"])) )[0]
-        x = new_wl[overlap]
-        bm = []
-        for region in self.features[self.currFeat]["comparePoints"]:
-            bm.extend(scipy.where( (x > region[0]) & (x < region[1]) )[0])
-        H = self.computeHessian(centroid)
-        C = 2.0*H.I
-        covar = min(best_values)*C*len(bm)/(len(bm)-len(best_values))
-
-        print best_coords
-        print best_values
-        print covar
-        raw_input()
-        '''
         print retval.dump()
         return retval
 
@@ -796,6 +802,8 @@ class spectralSynthesizer( object ):
         self.x_window = {}
         self.flat = {}
         self.z = {}
+        self.interpolated_model = {}
+        tempWeight = 0.0
         for num in self.features.keys():
             feat = self.features[num]
             self.currFeat = num
@@ -806,6 +814,7 @@ class spectralSynthesizer( object ):
                 self.x_window[num] = x_window
                 self.flat[num] = flat
                 self.z[num] = z
+                self.interpolated_model[num] = {"T":0.0, "G":0.0, "B":0.0, "y_new":[]}
 
                 x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 0.0)
                 x_sm = x_sm/10000.0                # convert MOOG wavelengths to microns
@@ -813,9 +822,11 @@ class spectralSynthesizer( object ):
                 
                 kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                 guess_coords[num] = self.gridSearch(**kwargs)
+                guess_coords[num]["T"] *= feat["tempWeight"]
+                tempWeight += feat["tempWeight"]
                 
         initial_guess = {}
-        initial_guess["T"] = numpy.mean([guess_coords[coord]["T"] for coord in guess_coords])
+        initial_guess["T"] = numpy.sum([guess_coords[coord]["T"] for coord in guess_coords])/(tempWeight)
         if (2 in guess_coords.keys() ):
             initial_guess["G"] = min(guess_coords[2]["G"], 500)
         else:
@@ -831,12 +842,15 @@ class spectralSynthesizer( object ):
         overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
 
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])
-        initial_guess["r"] = self.calcVeiling(self.flat[4][overlap], synthetic_spectrum, new_wl[overlap],self.features[4]["comparePoints"])
+        veiling = self.calcVeiling(self.flat[4][overlap], synthetic_spectrum, new_wl[overlap],self.features[4]["comparePoints"])
         
         print "Guesses from Grid Search :", guess_coords
         print "Initial Guess :", initial_guess
+        contLevels = {key:1.0 for key in guess_coords.keys()}
+        init_guess = gridPoint(initial_guess, contLevels, veiling)
         #retval.append(initial_guess)
-        best_coords = self.simplex(initial_guess, plt)
+        first_pass = self.simplex(init_guess, plt, mode = 'CONTINUUM')
+        best_coords = self.simplex(first_pass, plt, mode = 'FINAL')
         covariance = self.computeCovariance(best_coords)
         print 'Best Fit Coordinates :', best_coords
 
