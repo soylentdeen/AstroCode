@@ -14,7 +14,7 @@ import matplotlib.pyplot as pyplot
 
 class gridPoint( object ):    # Object which contains information about a Chi-Squared grid point
     def __init__(self, TGBcoords, contLevel, veiling):
-        
+        self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.TGB = {"T":TGBcoords["T"], "G":TGBcoords["G"], "B":TGBcoords["B"]}
         self.contLevel = {}
         self.veiling = veiling
@@ -42,7 +42,19 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
         retval += 'dr_2.2 = '+str(self.veiling/other.veiling)+'\n'
 
         return retval
+    
+    def checkLimits(self):
+        for key in ["T", "G", "B"]:
+            if ( self.TGB[key] >= self.limits[key][0] ):
+                if ( self.TGB[key] <= self.limits[key][1]):
+                    pass
+                else:
+                    self.TGB[key] =self.limits[key][1]
+            else:
+                self.TGB[key] = self.limits[key][0]
 
+        if (self.veiling < 0.0):
+            self.veiling = 0.0025
 
 class spectralSynthesizer( object ):
     def __init__(self):
@@ -56,13 +68,13 @@ class spectralSynthesizer( object ):
         lineWidths = [[0.003, 0.003, 0.003, 0.0025, 0.0025, 0.0025], [0.005, 0.005, 0.01], [0.005, 0.005],[0.005, 0.005],[0.005, 0.005,0.01]]
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.157,1.17],[1.175,1.1995],[1.2073,1.212]],[[1.482, 1.519]],[[1.571,1.599]],
-        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258],[2.270,2.287]]]
+        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258],[2.270,2.287]]]#[2.2425,2.31]]]
         #[[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258]]]
+        continuumPoints = [[[1.165,1.168],[1.171,1.174],[1.19,1.195],[1.211, 1.22]],[[1.49,1.50],[1.508,1.52]],[[1.57, 1.60]],[[2.192,2.196],[2.211,2.218]],[[2.24, 2.258],[2.27, 2.277],[2.86,2.291]]]
 
         self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/deen/Data/StarFormation/TWA/bfields/'
         self.delta = {"T":200.0, "G":50.0, "B":0.75, "dy":0.0025, "r":1.25}    # [dT, dG, dB, d_dy, dr]
-        self.delta_factor = 1.0
         self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
@@ -82,6 +94,7 @@ class spectralSynthesizer( object ):
             feat["strongLines"] = strongLines[i]
             feat["lineWidths"] = lineWidths[i]
             feat["comparePoints"] = comparePoints[i]
+            feat["continuumPoints"] = continuumPoints[i]
             self.features[feat_num[i]] = feat
 
         self.temps = numpy.array(range(2500, 4000, 100)+range(4000,6250, 250))
@@ -304,7 +317,11 @@ class spectralSynthesizer( object ):
                     kwargs["plot"].plot(obs, sim, veil)
                     time.sleep(2.0)
                 #'''
-                retval += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+                if (self.compareMode == 'LINES'):
+                    retval += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+                elif (self.compareMode == 'CONTINUUM'):
+                    retval += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap],
+                    new_wl[overlap], self.features[self.currFeat]["continuumPoints"])
 
         return retval
     
@@ -328,17 +345,7 @@ class spectralSynthesizer( object ):
 
         return (S1-S2)/(2*self.delta[index])
 
-    def compute2ndDeriv(self, coords, i, j):
-        '''
-             i = 0, 1, 2 -> T, G, B
-             i = 3 = veiling
-             i = 4 ... n -> dy_i, dy_(n-4)
-        '''
-        keys = {0:"T", 1:"G", 2:"B", 3:"r"}
-        n = 4
-        for key in coords.contLevel.keys():
-            keys[n] = key
-            n += 1
+    def compute2ndDeriv(self, coords, keys, i, j):
         key_i = keys[i]
         key_j = keys[j]
         if( key_i == key_j ):
@@ -474,11 +481,26 @@ class spectralSynthesizer( object ):
 
     def computeHessian(self, coords):
         new_coords = copy.deepcopy(coords)
-        H = numpy.zeros([coords.n_dims,coords.n_dims])
+        '''
+             i = 0, 1, 2 -> T, G, B
+             i = 3 = veiling
+             i = 4 ... n -> dy_i, dy_(n-4)
+        '''
+        keys = {}
+        n = 0
+        for i in ["T", "G", "B", "r"]:
+            if self.floaters[i] == True:
+                keys[n] = i
+                n += 1
+        if self.floaters["dy"] == True:
+            for key in coords.contLevel.keys():
+                keys[n] = key
+                n += 1
+        H = numpy.zeros([n,n])
 
-        for i in range(coords.n_dims):
-            for j in numpy.arange(coords.n_dims - i) + i:
-                H[i,j] = H[j,i] = self.compute2ndDeriv(new_coords, i, j)
+        for i in range(n):
+            for j in numpy.arange(n - i) + i:
+                H[i,j] = H[j,i] = self.compute2ndDeriv(new_coords, keys, i, j)
                 print i, j, H[i,j]
 
         self.Hessian = numpy.matrix(H)
@@ -520,41 +542,6 @@ class spectralSynthesizer( object ):
             new_coordinates = old_coordinates+vect.transpose()
             old_chisq = self.computeS(numpy.array(new_coordinates)[0])
             old_coordinates = numpy.array(new_coordinates)[0]
-
-    def check_bounds(self, coords):
-        retval = []
-        if ( coords[0] >= 2500.0 ):
-            if ( coords[0] <= 6000.0):
-                retval.append(coords[0])
-            else:
-                retval.append(6000.0)
-        else:
-            retval.append(2500.0)
-
-        if ( coords[1] >= 300.0):
-            if (coords[1] <= 500.0):
-                retval.append(coords[1])
-            else:
-                retval.append(500.0)
-        else:
-            retval.append(300.0)
-
-        if (coords[2] >= 0.0):
-            if (coords[2] <= 4.0):
-                retval.append(coords[2])
-            else:
-                retval.append(4.0)
-        else:
-            retval.append(0.0)
-
-        retval.append(coords[3])
-        retval.append(coords[4])
-        if (coords[5] > 0.0):
-            retval.append(coords[5])
-        else:
-            retval.append(0.0)
-
-        return retval
 
     def gridSearch(self, **kwargs):
         Tval = []
@@ -609,13 +596,24 @@ class spectralSynthesizer( object ):
 
             out.close()
             
-        order = numpy.argsort(S)
-
         Tval = numpy.array(Tval)
         Gval = numpy.array(Gval)
         Bval = numpy.array(Bval)
         S = numpy.array(S)
         veiling = numpy.array(veiling)
+        try:
+            if "noBField" in kwargs:
+                bm = scipy.where(Bval == 0.0)
+                Tval = Tval[bm]
+                Gval = Gval[bm]
+                Bval = Bval[bm]
+                veiling = veiling[bm]
+                S = S[bm]
+        except:
+            pass
+
+        order = numpy.argsort(S)
+
         self.features[self.currFeat]["x_offset"] = x_offset
 
         '''
@@ -719,13 +717,14 @@ class spectralSynthesizer( object ):
     def simplex(self, guess, plt, **kwargs):
         #simplex_coords = [init_guess]
         #simplex_values = [self.computeS(init_guess)]
+        self.compareMode = kwargs["mode"]
         if kwargs["mode"] == 'CONTINUUM':
             self.floaters["T"] = False
             self.floaters["G"] = False
             self.floaters["B"] = False
             self.floaters["dy"] = True
             self.floaters["r"] = False
-        elif kwargs["mode"] == 'FINAL':
+        elif kwargs["mode"] == 'LINES':
             self.floaters["T"] = True 
             self.floaters["G"] = True
             self.floaters["B"] = True
@@ -792,13 +791,16 @@ class spectralSynthesizer( object ):
             #junk = self.computeS(centroid)#, plot=plt)
             # Reflect about centroid
             trial_1 = self.reflect(centroid, coords[order[-1]], trial=1)
+            trial_1.checkLimits()
             S1 = self.computeS(trial_1)
             
             if (S1 > Svalues[order[-1]]):    # Try longer path along distance
                 trial_2 = self.reflect(centroid, coords[order[-1]], trial=2)
+                trial_2.checkLimits()
                 S2 = self.computeS(trial_2)
                 if (S2 > Svalues[order[-1]]):    # Try half the distance
                     trial_3 = self.reflect(centroid, coords[order[-1]], trial=3)
+                    trial_3.checkLimits()
                     S3 = self.computeS(trial_3)
                     if (S3 > Svalues[order[-1]]):     # Shrink?
                         #self.delta_factor *= 2.0
@@ -806,6 +808,7 @@ class spectralSynthesizer( object ):
                         coords = self.contract(centroid, coords)
                         Svalues = []
                         for coord in coords:
+                            coord.checkLimits()
                             Svalues.append(self.computeS(coord))
                             #print 'Contracted!'
                         #    n_contractions += 1
@@ -825,10 +828,8 @@ class spectralSynthesizer( object ):
                 #print 'Trial 1'
         
         retval = self.findCentroid(coords)
-        junk = self.computeS(retval)#, plot=plt)
         print numpy.mean(Svalues), numpy.std(Svalues)
 
-        print retval.dump()
         return retval
 
     def calc_initial_guess(self, features, weights):
@@ -858,7 +859,6 @@ class spectralSynthesizer( object ):
         self.x_window = {}
         self.flat = {}
         self.z = {}
-        print 'Checkpoint 1'
         self.interpolated_model = {}
         weights = {}
 
@@ -872,7 +872,6 @@ class spectralSynthesizer( object ):
                 self.x_window[num] = x_window
                 self.flat[num] = flat
                 self.z[num] = z
-                print 'checkpoint 2'
                 self.interpolated_model[num] = {"T":0.0, "G":0.0, "B":0.0, "y_new":[]}
 
                 x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 0.0)
@@ -880,6 +879,7 @@ class spectralSynthesizer( object ):
                 self.features[self.currFeat]["wl"] = x_sm
                 
                 kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
+                #kwargs["noBField"]=True
                 guess_coords[num] = self.gridSearch(**kwargs)
                 weights[num] = numpy.mean(flat/z)
                 
@@ -909,8 +909,12 @@ class spectralSynthesizer( object ):
 
         synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*contLevels[4]
         veiling = self.calcVeiling(self.flat[4][overlap], synthetic_spectrum, new_wl[overlap],self.features[4]["comparePoints"])
-        best_coords = self.simplex(first_pass, plt, mode = 'FINAL')
+        best_coords = self.simplex(first_pass, plt, mode = 'LINES')
+        #first_pass.TGB["B"] = 0.0
+        #best_coords = self.simplex(first_pass, plt, mode = 'LINES', Fixed_B = True)
+        self.floaters["dy"] = True
         self.saveFigures(best_coords, outfile=outfile)
+        #self.saveFigures(best_coords, outfile=outfile+'_B=0')
         covariance = self.computeCovariance(best_coords)
 
         return best_coords, covariance

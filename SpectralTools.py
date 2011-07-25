@@ -165,6 +165,14 @@ def fit_gaussians(x, y, linecenters, R, **kwargs):
 
     return coeffs, fit
 
+def calc_EW(x, y, xstart, xstop):
+   bm = scipy.where( (x > xstart) & (x < xstop) )[0]
+   cont = numpy.ones(len(bm))
+   num = scipy.integrate.simps(y[bm], x[bm])
+   denom = scipy.integrate.simps(cont, x[bm])
+   return (denom-num)
+
+
 def blackBody(**kwargs):
     """ Returns a blackbody function over the given wavelength  """
 
