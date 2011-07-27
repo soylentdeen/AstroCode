@@ -77,6 +77,7 @@ class spectralSynthesizer( object ):
         #self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
+        self.convergencePoints = []
 
         self.calc_VeilingSED(8000.0, 2500.0, 1400.0, 62.0, 910.0)
 
@@ -197,6 +198,7 @@ class spectralSynthesizer( object ):
         coord.coords["r"] = guess[3]
         self.computeS(coord, compareMode="LINES")
         print "%10.3f %10.3f %10.3f %10.3f %10.3f" % (coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.coords["r"],  coord.S)
+        self.convergencePoints.append(copy.deepcopy(coord))
         return coord.S
 
     def findBestFitVeiling(self, coord):
@@ -781,6 +783,9 @@ class spectralSynthesizer( object ):
         self.findBestFitModel(initial_guess)
         print 'Final Answer :'
         print initial_guess.dump()
+        chiSquaredLogFile = open(self.dataBaseDir+'gridSearch/'+kwargs["outfile"]+'.chisq.log', 'w')
+        pickle.dump(self.convergencePoints, chiSquaredLogFile)
+        chiSquaredLogFile.close()
         self.saveFigures(initial_guess, outfile=outfile)
         #self.saveFigures(best_coords, outfile=outfile+'_B=0')
         covariance = self.computeCovariance(initial_guess)
