@@ -73,7 +73,7 @@ class spectralSynthesizer( object ):
 
         self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/grad58/deen/Data/StarFormation/bfields/'
-        self.delta = {"T":50.0, "G":25.0, "B":0.25, "dy":0.0025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
+        self.delta = {"T":50.0, "G":25.0, "B":0.25, "dy":0.00025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
         #self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
@@ -190,23 +190,24 @@ class spectralSynthesizer( object ):
         self.computeS(coord, compareMode='LINES')
         return coord.S
         
-    def dualTest(self, guess, coord, keys):
-        for g, key in zip(guess[0:-1], keys):
-            coord.coords[key] = g
-        coord.coords["r"] = guess[-1]
+    def fitPhysical(self, guess, coord, junk):
+        coord.coords["T"] = guess[0]
+        coord.coords["G"] = guess[1]
+        coord.coords["B"] = guess[2]
+        coord.coords["r"] = guess[3]
         self.computeS(coord, compareMode="LINES")
+        print "%10.3f %10.3f %10.3f %10.3f %10.3f" % (coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.coords["r"],  coord.S)
         return coord.S
 
     def findBestFitVeiling(self, coord):
         '''
             This procedure should find the best fit veiling and continuum values for the fidiucial value
         '''
-        #cont_guess = []
-        #for i in self.interpolated_model.keys():
-        #    cont_guess.append(1.0)
-        #cont_guess = numpy.array(cont_guess)
-        #cont_value = scipy.optimize.fmin(self.continuumTest, cont_guess, (coord, self.interpolated_model.keys()),
-        #disp=False)
+        cont_guess = []
+        for i in self.interpolated_model.keys():
+            cont_guess.append(1.0)
+        cont_guess = numpy.array(cont_guess)
+        cont_value = scipy.optimize.fmin(self.continuumTest, cont_guess, (coord, self.interpolated_model.keys()),disp=False)
         #print cont_value
         veil_guess = numpy.array([0.0])
         veiling = scipy.optimize.fmin(self.veilingTest, veil_guess, (coord, 1), disp = False)
@@ -214,16 +215,18 @@ class spectralSynthesizer( object ):
         #print veiling
         #print coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.S
         return coord
-        '''
 
-        guess = []
+    def findBestFitModel(self, coord):
+        cont_guess = []
         for i in self.interpolated_model.keys():
-            guess.append(1.0)
-        guess.append(0.0)
-        params = scipy.optimize.fmin(self.dualTest, guess, (coord, self.interpolated_model.keys()), disp=False)
-        print params
-        return coord
-        '''
+            cont_guess.append(1.0)
+        cont_guess = numpy.array(cont_guess)
+        cont_value = scipy.optimize.fmin(self.continuumTest, cont_guess, (coord, self.interpolated_model.keys()),
+        disp=False)
+        print cont_value
+        params = [coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.coords["r"]]
+        physical_parameters = scipy.optimize.fmin(self.fitPhysical, params, (coord, 1), xtol=100, ftol=100)
+        print 'Converged!'
 
     def allTest(self, guess, coord, junk):
         coord.coords["T"] = guess[0]
@@ -248,9 +251,8 @@ class spectralSynthesizer( object ):
             epsilon = numpy.append(epsilon, 0.002)
             lb = numpy.append(lb, 0.8)
             ub = numpy.append(ub, 1.2)
-        #best_fit = scipy.optimize.fmin(self.allTest, parameters, args=(coord, 1), full_output=True, ftol=coord.S/10.0,maxiter=50, xtol=coord.S/10.0)
-        best_fit = scipy.optimize.fmin_bfgs(self.allTest, parameters, args = (coord, 1), fprime=self.computeGradient,
-        gtol=100.0)
+        best_fit = scipy.optimize.fmin(self.allTest, parameters, args=(coord, 1), full_output=True, ftol=coord.S/10.0,maxiter=50, xtol=coord.S/10.0)
+        #best_fit = scipy.optimize.fmin_bfgs(self.allTest, parameters, args = (coord, 1), fprime=self.computeGradient,gtol=100.0)
         return coord
 
 
@@ -774,7 +776,11 @@ class spectralSynthesizer( object ):
             B.append(fineGrid[order[i]].coords["B"])
             r.append(fineGrid[order[i]].coords["r"])
         initial_guess = gridPoint({"T":numpy.mean(T), "G":numpy.mean(G), "B":numpy.mean(B)}, contLevels, numpy.mean(r))
-        #best_coords = self.newton_search(initial_guess)
+        print 'Preliminary Guess:'
+        print initial_guess.dump()
+        self.findBestFitModel(initial_guess)
+        print 'Final Answer :'
+        print initial_guess.dump()
         self.saveFigures(initial_guess, outfile=outfile)
         #self.saveFigures(best_coords, outfile=outfile+'_B=0')
         covariance = self.computeCovariance(initial_guess)
