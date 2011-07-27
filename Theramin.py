@@ -4,12 +4,15 @@ import scipy
 import numpy
 import scipy.interpolate
 import scipy.integrate
+import scipy.optimize
 import Gnuplot
 import pickle
 import time
 import copy
 import os
 import matplotlib.pyplot as pyplot
+import matplotlib
+import matplotlib.colors
 
 
 class gridPoint( object ):    # Object which contains information about a Chi-Squared grid point
@@ -26,6 +29,7 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
         self.S = S
 
     def dump(self):                # Prints out the contents of the gridPoint in text format
+        retval = ''
         for i in self.coords.keys():
             retval += 'Feature '+str(i)+', dy = '+str(self.coords[i])+'\n'
         retval += 'Chi Squared : '+str(self.S)+'\n'
@@ -60,16 +64,16 @@ class spectralSynthesizer( object ):
         slope_stop = [1.25, 1.54, 1.62, 2.25, 2.31]
         strongLines = [[1.16, 1.168, 1.176, 1.1828, 1.1884, 1.198], [1.488, 1.503, 1.5045], [1.5745, 1.5770],
         [2.166,2.2066], [2.263, 2.267, 2.30]]
-        lineWidths = [[0.003, 0.003, 0.003, 0.0025, 0.0025, 0.0025], [0.005, 0.005, 0.01], [0.005, 0.005],[0.005, 0.005],[0.005, 0.005,0.01]]
+        lineWidths = [[0.0035, 0.0035, 0.0035, 0.0025, 0.0025, 0.0025], [0.005, 0.005, 0.01], [0.005, 0.005],[0.005, 0.005],[0.005, 0.005,0.01]]
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
-        comparePoints = [[[1.157,1.17],[1.175,1.1995],[1.2073,1.212]],[[1.482, 1.519]],[[1.571,1.599]],
-        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258],[2.270,2.287]]]#[2.2425,2.31]]]
+        comparePoints = [[[1.157,1.17],[1.18,1.1995],[1.2073,1.212]],[[1.482, 1.519]],[[1.571,1.599]],
+        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]],[[2.2425,2.31]]]#[[2.2425,2.258],[2.270,2.287]]]#[2.2425,2.31]]] 
         #[[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258]]]
         continuumPoints = [[[1.165,1.168],[1.171,1.174],[1.19,1.195],[1.211, 1.22]],[[1.49,1.50],[1.508,1.52]],[[1.57, 1.60]],[[2.192,2.196],[2.211,2.218]],[[2.24, 2.258],[2.27, 2.277],[2.86,2.291]]]
 
         self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/deen/Data/StarFormation/bfields/'
-        self.delta = {"T":200.0, "G":50.0, "B":0.75, "dy":0.0025, "r":1.25}    # [dT, dG, dB, d_dy, dr]
+        self.delta = {"T":50.0, "G":25.0, "B":0.25, "dy":0.0025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
         #self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
@@ -92,10 +96,13 @@ class spectralSynthesizer( object ):
             feat["continuumPoints"] = continuumPoints[i]
             self.features[feat_num[i]] = feat
 
-        temps = numpy.array(range(2500, 4000, 100)+range(4000,6250, 250))
-        gravs = numpy.array(range(300, 600, 50))
+        temps = numpy.array(range(3000, 4100, 100))#+range(4000,5250, 250))
+        gravs = numpy.array(range(300, 550, 50))
         bfields = numpy.array(numpy.arange(0, 4.5, 0.5))
-        self.ranges = {"T":temps, "G":gravs, "B":bfields}
+        self.ranges = {"T":numpy.array(range(2500, 4000, 100)+range(4000, 6250, 250)), "G":numpy.array(range(300,
+        550, 50)), "B":numpy.array(numpy.arange(0, 4.5, 0.5))}
+        self.coarseRanges = {"T":numpy.array(range(2600, 4000, 200)+range(4000, 6500, 500)), "G":numpy.array(range(300,
+        600, 100)), "B":numpy.array(numpy.arange(0, 4.5, 1.0))}
 
     def calc_VeilingSED(self, Thot, Tint, Tcool, fi_fh, fc_fh):
         wave = numpy.arange(1.0, 2.5, 0.01)
@@ -172,10 +179,80 @@ class spectralSynthesizer( object ):
             
         self.features[self.currFeat]["x_offset"] = offset_computed
 
+    def continuumTest(self, guess, coord, keys):
+        for g, key in zip(guess, keys):
+            coord.coords[key] = g
+        self.computeS(coord, compareMode='CONTINUUM')
+        return coord.S
+
+    def veilingTest(self, guess, coord, junk):
+        coord.coords["r"] = guess
+        self.computeS(coord, compareMode='LINES')
+        return coord.S
+        
+    def dualTest(self, guess, coord, keys):
+        for g, key in zip(guess[0:-1], keys):
+            coord.coords[key] = g
+        coord.coords["r"] = guess[-1]
+        self.computeS(coord, compareMode="LINES")
+        return coord.S
+
     def findBestFitVeiling(self, coord):
         '''
             This procedure should find the best fit veiling and continuum values for the fidiucial value
         '''
+        #cont_guess = []
+        #for i in self.interpolated_model.keys():
+        #    cont_guess.append(1.0)
+        #cont_guess = numpy.array(cont_guess)
+        #cont_value = scipy.optimize.fmin(self.continuumTest, cont_guess, (coord, self.interpolated_model.keys()),
+        #disp=False)
+        #print cont_value
+        veil_guess = numpy.array([0.0])
+        veiling = scipy.optimize.fmin(self.veilingTest, veil_guess, (coord, 1), disp = False)
+        #veiling = scipy.optimize.fmin_bfgs(self.veilingTest, veil_guess, args=(coord, 1), disp = False)
+        #print veiling
+        #print coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.S
+        return coord
+        '''
+
+        guess = []
+        for i in self.interpolated_model.keys():
+            guess.append(1.0)
+        guess.append(0.0)
+        params = scipy.optimize.fmin(self.dualTest, guess, (coord, self.interpolated_model.keys()), disp=False)
+        print params
+        return coord
+        '''
+
+    def allTest(self, guess, coord, junk):
+        coord.coords["T"] = guess[0]
+        coord.coords["G"] = guess[1]
+        coord.coords["B"] = guess[2]
+        coord.coords["r"] = guess[3]
+        for g, key in zip(guess[4:], self.interpolated_model.keys()):
+            coord.coords[key] = g
+        #coord.checkLimits()
+        self.computeS(coord, compareMode="LINES")
+        print coord.dump()
+        print coord.S
+        return coord.S
+
+    def newton_search(self, coord, plt=None):
+        parameters = [coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.coords["r"]]
+        epsilon = numpy.array([25.0, 10.0, 0.1, 0.05])
+        lb = numpy.array([3800, 400, 2.0, 0.0005])
+        ub = numpy.array([4000, 500, 4.0, 0.5])
+        for key in self.interpolated_model.keys():
+            parameters.append(coord.coords[key])
+            epsilon = numpy.append(epsilon, 0.002)
+            lb = numpy.append(lb, 0.8)
+            ub = numpy.append(ub, 1.2)
+        #best_fit = scipy.optimize.fmin(self.allTest, parameters, args=(coord, 1), full_output=True, ftol=coord.S/10.0,maxiter=50, xtol=coord.S/10.0)
+        best_fit = scipy.optimize.fmin_bfgs(self.allTest, parameters, args = (coord, 1), fprime=self.computeGradient,
+        gtol=100.0)
+        return coord
+
 
     def calcVeiling(self, y_obs, y_calc, x, comparePoints):     #Finds the best-fit veiling for a given model
         bm = []
@@ -190,7 +267,13 @@ class spectralSynthesizer( object ):
         return veil[0]
 
     def interpolatedModel(self, T, G, B):
-        if ( (abs(self.interpolated_model[self.currFeat]["T"]- T) > 2.0) |
+        if ( (T < 2500) | (T > 6000) | (G < 300) | (G > 500) | (B < 0) | (B > 4.0) ):
+            self.interpolated_model[self.currFeat]["flux"]=numpy.zeros(len(self.interpolated_model[self.currFeat]["wl"]))
+            self.interpolated_model[self.currFeat]["T"] = T
+            self.interpolated_model[self.currFeat]["G"] = G
+            self.interpolated_model[self.currFeat]["B"] = B
+            new_y = self.interpolated_model[self.currFeat]["flux"]
+        elif ( (abs(self.interpolated_model[self.currFeat]["T"]- T) > 2.0) |
         (abs(self.interpolated_model[self.currFeat]["G"]- G) > 2.0) |
         (abs(self.interpolated_model[self.currFeat]["B"]-B)>0.05) ):
             
@@ -198,23 +281,23 @@ class spectralSynthesizer( object ):
             self.interpolated_model[self.currFeat]["G"] = G
             self.interpolated_model[self.currFeat]["B"] = B
             #choose bracketing temperatures
-            if not(T in self.temps):
-                Tlow = max(self.temps[scipy.where(self.temps <= T)])
-                Thigh = min(self.temps[scipy.where(self.temps >= T)])
+            if not(T in self.ranges["T"]):
+                Tlow = max(self.ranges["T"][scipy.where(self.ranges["T"] <= T)])
+                Thigh = min(self.ranges["T"][scipy.where(self.ranges["T"] >= T)])
             else:
                 Tlow = Thigh = T
 
             #choose bracketing surface gravities
-            if not(G in self.gravs):
-                Glow = max(self.gravs[scipy.where(self.gravs <= G)])
-                Ghigh = min(self.gravs[scipy.where(self.gravs >= G)])
+            if not(G in self.ranges["G"]):
+                Glow = max(self.ranges["G"][scipy.where(self.ranges["G"] <= G)])
+                Ghigh = min(self.ranges["G"][scipy.where(self.ranges["G"] >= G)])
             else:
                 Glow = Ghigh = G
 
             #choose bracketing B-fields
-            if not(B in self.bfields):
-                Blow = max(self.bfields[scipy.where(self.bfields <= B)])
-                Bhigh  = min(self.bfields[scipy.where(self.bfields >= B)])
+            if not(B in self.ranges["B"]):
+                Blow = max(self.ranges["B"][scipy.where(self.ranges["B"] <= B)])
+                Bhigh  = min(self.ranges["B"][scipy.where(self.ranges["B"] >= B)])
             else:
                 Blow = Bhigh = B
 
@@ -260,9 +343,9 @@ class spectralSynthesizer( object ):
                 else:
                     new_y[i] = scipy.interpolate.interp1d([Blow, Bhigh], [y1234, y5678])(B)
 
-            self.interpolated_model[self.currFeat]["new_y"] = new_y
+            self.interpolated_model[self.currFeat]["flux"] = new_y
         else:
-            new_y = self.interpolated_model[self.currFeat]["new_y"]
+            new_y = self.interpolated_model[self.currFeat]["flux"]
         return new_y
 
     def readMOOGModel(self, T, G, B, **kwargs):
@@ -282,36 +365,37 @@ class spectralSynthesizer( object ):
         if computeVeiling:
             self.findBestFitVeiling(coord)
             # Find best fit contiuum and veiling.  Maybe assume continuum = 1.0?
-            print 'durrrr'
         else:
             chiSq = 0.0
             for num in self.interpolated_model.keys():
                 self.currFeat = num
-                y_new = self.interpolatedModel(coord.coords["T"], coord.coords["G"], coord.coords["B"])
-                x_sm = self.features[self.currFeat]["wl"]
-
-                new_wl = self.x_window[self.currFeat] + self.features[self.currFeat]["x_offset"]
-                overlap = scipy.where( (new_wl > min(self.features[self.currFeat]["wl"])) & (new_wl <
-                max(self.features[self.currFeat]["wl"])) )[0]
-
-                synthetic_spectrum = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])*coord.coords[num]
-                excess = self.compute_Excess(new_wl[overlap], coord.coords["T"], coord.coords["r"])
-                veiled = (synthetic_spectrum+excess)/(excess+1.0)
+                x_sm = self.interpolated_model[num]["wl"]
+                new_wl = self.x_window[num] + self.features[num]["x_offset"]
+                overlap = scipy.where( (new_wl > min(x_sm)) & (new_wl < max(x_sm)) )[0]
+                if ( (abs(self.interpolated_model[self.currFeat]["T"]- coord.coords["T"]) > 2.0) |
+                (abs(self.interpolated_model[self.currFeat]["G"]- coord.coords["G"]) > 2.0) |
+                (abs(self.interpolated_model[self.currFeat]["B"]-coord.coords["B"])>0.05) ):
+                    y_new = self.interpolatedModel(coord.coords["T"], coord.coords["G"], coord.coords["B"])
+                    self.synthetic_spectrum[num] = self.binMOOGSpectrum(y_new, x_sm, new_wl[overlap])
+                if ( (self.veiling_model[num]["r"] != coord.coords["r"]) | (self.veiling_model[num]["T"] != coord.coords["T"]) ):
+                    self.veiling_model[num]["r"] = coord.coords["r"]
+                    self.veiling_model[num]["T"] = coord.coords["T"]
+                    self.veiling_model[num]["flux"] = self.compute_Excess(new_wl[overlap], coord.coords["T"], coord.coords["r"])
+                veiled=(self.synthetic_spectrum[num]*coord.coords[num]+self.veiling_model[num]["flux"])/(self.veiling_model[num]["flux"]+1.0)
 
                 if returnSpectra:    # We are simply returning the different spectra
                     retval[num] = {"wl":new_wl[overlap], "obs":self.flat[self.currFeat][overlap], "veiled":veiled, "noise":self.z[self.currFeat][overlap]}
                 #'''
-                if "plot" in kwargs:
+                if ( (num == 1) & ("plt" in kwargs)):
                     obs = Gnuplot.Data(new_wl[overlap], self.flat[num][overlap], with_='lines')
-                    sim = Gnuplot.Data(new_wl[overlap], synthetic_spectrum, with_='lines')
+                    sim = Gnuplot.Data(new_wl[overlap], self.synthetic_spectrum[num], with_='lines')
                     veil = Gnuplot.Data(new_wl[overlap], veiled, with_='lines')
-                    kwargs["plot"].plot(obs, sim, veil)
-                    time.sleep(2.0)
+                    kwargs["plt"].plot(obs, sim, veil)
                 #'''
                 if (compareMode == 'LINES'):
-                    chiSq += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["comparePoints"])
+                    chiSq += self.calcError(self.flat[num][overlap],veiled,self.z[num][overlap],new_wl[overlap],self.features[num]["comparePoints"])
                 elif (compareMode == 'CONTINUUM'):
-                    chiSq += self.calcError(self.flat[self.currFeat][overlap],veiled,self.z[self.currFeat][overlap], new_wl[overlap], self.features[self.currFeat]["continuumPoints"])
+                    chiSq += self.calcError(self.flat[num][overlap],veiled,self.z[num][overlap],new_wl[overlap], self.features[num]["continuumPoints"])
 
             coord.addChiSquared(chiSq)
             if returnSpectra:
@@ -326,150 +410,101 @@ class spectralSynthesizer( object ):
         
         return excess
     
-    def computeDeriv(self, coords, index):
-        coords[index] += self.delta[index]
-        S1 = self.computeS(coords)
+    def computeDeriv(self, coord, key):
+        coord_one = copy.deepcopy(coord)
+        if key in ["T", "G", "B", "r"]:
+            factor = 1.0
+            while ((coord_one.coords[key] + self.delta[key]*factor) >= coord_one.limits[key][1]):
+                factor -= 0.2
+            coord_one.coords[key] += self.delta[key]*factor
+            delta_one = self.delta[key]*factor
+        else:
+            coord_one.coords[key] += self.delta["dy"]
+            delta_one = self.delta["dy"]
 
-        coords[index] -= 2.0*self.delta[index]
-        S2 = self.computeS(coords)
+        self.computeS(coord_one)
 
-        coords[index] += self.delta[index]
+        coord_two = copy.deepcopy(coord)
+        if key in ["T", "G", "B", "r"]:
+            factor = 1.0
+            while ((coord_two.coords[key] - self.delta[key]*factor) <= coord_two.limits[key][0]):
+                factor -= 0.2
+            coord_two.coords[key] -= self.delta[key]*factor
+            delta_two = self.delta[key]*factor
+        else:
+            coord_two.coords[key] -= self.delta["dy"]
+            delta_two = self.delta["dy"]
+            
+        self.computeS(coord_two)
 
-        return (S1-S2)/(2*self.delta[index])
+        delta = (delta_one + delta_two)/2.0
+        return (coord_one.S-coord_two.S)/(2*delta)
 
     def compute2ndDeriv(self, coords, keys, i, j):
         key_i = keys[i]
         key_j = keys[j]
-        if( key_i == key_j ):
-            if ( key_i in ["T", "G", "B"]):
-                ifactor = 1.0
-                while (((coords.TGB[key_i] - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
-                ((coords.TGB[key_i]+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
-                    ifactor *= 0.8
-                coord_plus = copy.deepcopy(coords)
-                coord_plus.TGB[key_i] += self.delta[key_i]*ifactor
-                S_plus = self.computeS(coord_plus)
-                coord = copy.deepcopy(coords)
-                S = self.computeS(coord)
-                coord_minus = copy.deepcopy(coords)
-                coord_minus.TGB[key_i] -= self.delta[key_i]*ifactor
-                S_minus = self.computeS(coord_minus)
-                denominator = (self.delta[key_i]*ifactor)**2.0
-            elif ( key_i == 'r'):
-                ifactor = 1.0
-                while (((coords.veiling/(self.delta[key_i]*ifactor)) < self.limits[key_i][0]) |
-                ((coords.veiling*(self.delta[key_i]*ifactor)) > self.limits[key_i][1])):
-                    ifactor *= 0.8
-                coord_plus = copy.deepcopy(coords)
-                coord_plus.veiling *= self.delta[key_i]*ifactor
-                S_plus = self.computeS(coord_plus)
-                coord = copy.deepcopy(coords)
-                S = self.computeS(coord)
-                coord_minus = copy.deepcopy(coords)
-                coord_minus.veiling /= self.delta[key_i]*ifactor
-                S_minus = self.computeS(coord_minus)
-                denominator = (coords.veiling* (1.0-self.delta[key_i]*ifactor))**2.0
-            elif ( key_i in coords.contLevel.keys() ):
-                ifactor = 1.0
-                while (((coords.contLevel[key_i] - self.delta['dy']*ifactor) < self.limits['dy'][0]) |
-                ((coords.contLevel[key_i]+self.delta['dy']*ifactor) > self.limits['dy'][1])):
-                    ifactor *= 0.8
-                coord_plus = copy.deepcopy(coords)
-                coord_plus.contLevel[key_i] += self.delta['dy']*ifactor
-                S_plus = self.computeS(coord_plus)
-                coord = copy.deepcopy(coords)
-                S = self.computeS(coord)
-                coord_minus = copy.deepcopy(coords)
-                coord_minus.contLevel[key_i] -= self.delta['dy']*ifactor
-                S_minus = self.computeS(coord_minus)
-                denominator = (self.delta['dy']*ifactor)**2.0
-
-            return (S_plus-2*S+S_minus)/denominator
+        ifactor = 1.0
+        if ( key_i in ["T", "G", "B"]):
+            while (((coords.coords[key_i] - self.delta[key_i]*2*ifactor) < coords.limits[key_i][0]) |
+            ((coords.coords[key_i]+self.delta[key_i]*2*ifactor) > coords.limits[key_i][1])):
+                ifactor *= 0.8
+        coord_one = copy.deepcopy(coords)
+        coord_two = copy.deepcopy(coords)
+        coord_three = copy.deepcopy(coords)
+        coord_four = copy.deepcopy(coords)
+        if (key_i in self.interpolated_model.keys()):
+            coord_one.coords[key_i] += self.delta["dy"]*ifactor
+            coord_three.coords[key_i] += self.delta["dy"]*ifactor
+            coord_two.coords[key_i] -= self.delta["dy"]*ifactor
+            coord_four.coords[key_i] -= self.delta["dy"]*ifactor
+            denominator = self.delta["dy"]*ifactor
         else:
-            ifactor = 1.0
-            if ( key_i in ["T", "G", "B"]):
-                while (((coords.TGB[key_i] - self.delta[key_i]*ifactor) < self.limits[key_i][0]) |
-                ((coords.TGB[key_i]+self.delta[key_i]*ifactor) > self.limits[key_i][1])):
-                    ifactor *= 0.8
-                coord_one = copy.deepcopy(coords)
-                coord_two = copy.deepcopy(coords)
-                coord_three = copy.deepcopy(coords)
-                coord_four = copy.deepcopy(coords)
-                coord_one.TGB[key_i] += self.delta[key_i]*ifactor
-                coord_three.TGB[key_i] += self.delta[key_i]*ifactor
-                coord_two.TGB[key_i] -= self.delta[key_i]*ifactor
-                coord_four.TGB[key_i] -= self.delta[key_i]*ifactor
-                denominator = self.delta[key_i]*ifactor
-            elif ( key_i == 'r'):
-                while (((coords.veiling/(self.delta[key_i]*ifactor)) < self.limits[key_i][0]) |
-                ((coords.veiling*(self.delta[key_i]*ifactor)) > self.limits[key_i][1])):
-                    ifactor *= 0.8
-                coord_one = copy.deepcopy(coords)
-                coord_two = copy.deepcopy(coords)
-                coord_three = copy.deepcopy(coords)
-                coord_four = copy.deepcopy(coords)
-                coord_one.veiling *= self.delta[key_i]*ifactor
-                coord_three.veiling *= self.delta[key_i]*ifactor
-                coord_two.veiling /= self.delta[key_i]*ifactor
-                coord_four.veiling /= self.delta[key_i]*ifactor
-                denominator = coords.veiling*(1.0-self.delta[key_i]*ifactor)
-            elif ( key_i in coords.contLevel.keys() ):
-                while (((coords.contLevel[key_i] - self.delta['dy']*ifactor) < self.limits['dy'][0]) |
-                ((coords.contLevel[key_i]+self.delta['dy']*ifactor) > self.limits['dy'][1])):
-                    ifactor *= 0.8
-                coord_one = copy.deepcopy(coords)
-                coord_two = copy.deepcopy(coords)
-                coord_three = copy.deepcopy(coords)
-                coord_four = copy.deepcopy(coords)
-                coord_one.contLevel[key_i] += self.delta['dy']*ifactor
-                coord_three.contLevel[key_i] += self.delta['dy']*ifactor
-                coord_two.contLevel[key_i] -= self.delta['dy']*ifactor
-                coord_four.contLevel[key_i] -= self.delta['dy']*ifactor
-                denominator = self.delta['dy']*ifactor
+            coord_one.coords[key_i] += self.delta[key_i]*ifactor
+            coord_three.coords[key_i] += self.delta[key_i]*ifactor
+            coord_two.coords[key_i] -= self.delta[key_i]*ifactor
+            coord_four.coords[key_i] -= self.delta[key_i]*ifactor
+            denominator = self.delta[key_i]*ifactor
 
-            jfactor = 1.0
-            if ( key_j in ["T", "G", "B"]):
-                while (((coords.TGB[key_j] - self.delta[key_j]*jfactor) < self.limits[key_j][0]) |
-                ((coords.TGB[key_j]+self.delta[key_j]*jfactor) > self.limits[key_j][1])):
-                    jfactor *= 0.8
-                coord_one.TGB[key_j] += self.delta[key_j]*jfactor
-                coord_two.TGB[key_j] += self.delta[key_j]*jfactor
-                coord_three.TGB[key_j] -= self.delta[key_j]*jfactor
-                coord_four.TGB[key_j] -= self.delta[key_j]*jfactor
-                denominator *= self.delta[key_j]*jfactor
-            elif ( key_j == 'r'):
-                while (((coords.veiling/(self.delta[key_j]*jfactor)) < self.limits[key_j][0]) |
-                ((coords.veiling*(self.delta[key_j]*jfactor)) > self.limits[key_j][1])):
-                    jfactor *= 0.8
-                coord_one.veiling *= self.delta[key_j]*jfactor
-                coord_two.veiling *= self.delta[key_j]*jfactor
-                coord_three.veiling /= self.delta[key_j]*jfactor
-                coord_four.veiling /= self.delta[key_j]*jfactor
-                denominator *= coords.veiling*(1.0-self.delta[key_j]*jfactor)
-            elif ( key_j in coords.contLevel.keys() ):
-                while (((coords.contLevel[key_j] - self.delta['dy']*jfactor) < self.limits['dy'][0]) |
-                ((coords.contLevel[key_j]+self.delta['dy']*jfactor) > self.limits['dy'][1])):
-                    jfactor *= 0.8
-                coord_one.contLevel[key_j] += self.delta['dy']*jfactor
-                coord_two.contLevel[key_j] += self.delta['dy']*jfactor
-                coord_three.contLevel[key_j] -= self.delta['dy']*jfactor
-                coord_four.contLevel[key_j] -= self.delta['dy']*jfactor
-                denominator *= self.delta['dy']*jfactor
+        jfactor = 1.0
+        if ( key_j in ["T", "G", "B"]):
+            while (((coords.coords[key_j] - self.delta[key_j]*2*jfactor) < coords.limits[key_j][0]) |
+            ((coords.coords[key_j]+self.delta[key_j]*2*jfactor) > coords.limits[key_j][1])):
+                jfactor *= 0.8
+        if (key_j in self.interpolated_model.keys()):
+            coord_one.coords[key_j] += self.delta["dy"]*jfactor
+            coord_two.coords[key_j] += self.delta["dy"]*jfactor
+            coord_three.coords[key_j] -= self.delta["dy"]*jfactor
+            coord_four.coords[key_j] -= self.delta["dy"]*jfactor
+            denominator *= self.delta["dy"]*jfactor
+        else:
+            coord_one.coords[key_j] += self.delta[key_j]*jfactor
+            coord_two.coords[key_j] += self.delta[key_j]*jfactor
+            coord_three.coords[key_j] -= self.delta[key_j]*jfactor
+            coord_four.coords[key_j] -= self.delta[key_j]*jfactor
+            denominator *= self.delta[key_j]*jfactor
 
-            S1 = self.computeS(coord_one)
-            S2 = self.computeS(coord_two)
-            S3 = self.computeS(coord_three)
-            S4 = self.computeS(coord_four)
+        self.computeS(coord_one)
+        self.computeS(coord_two)
+        self.computeS(coord_three)
+        self.computeS(coord_four)
 
-            return (S1 - S2 - S3 + S4)/(4*denominator)
+        return (coord_one.S - coord_two.S - coord_three.S + coord_four.S)/(4*denominator)
 
-    def computeGradient(self, coords):
-        G = numpy.zeros(len(coords))
+    def computeGradient(self, guess, coord, junk):
+        print 'Calculating Gradient'
+        coord.coords["T"] = guess[0]
+        coord.coords["G"] = guess[1]
+        coord.coords["B"] = guess[2]
+        coord.coords["r"] = guess[3]
+        for g, key in zip(guess[4:], self.interpolated_model.keys()):
+            coord.coords[key] = g
+        G = numpy.zeros(len(guess))
 
-        for i in range(len(coords)):
-            G[i] = self.computeDeriv(coords, i)
+        for i in range(len(guess)):
+            G[i] = self.computeDeriv(coord, coord.coords.keys()[i])
 
-        return numpy.matrix(G)
+        print 'Gradient = ', G
+        return G
 
     def computeHessian(self, coords):
         new_coords = copy.deepcopy(coords)
@@ -485,7 +520,7 @@ class spectralSynthesizer( object ):
                 keys[n] = i
                 n += 1
         if self.floaters["dy"] == True:
-            for key in coords.contLevel.keys():
+            for key in self.interpolated_model.keys():
                 keys[n] = key
                 n += 1
         H = numpy.zeros([n,n])
@@ -499,8 +534,8 @@ class spectralSynthesizer( object ):
 
     def countPoints(self, minimum):
         points = 0.0
-        for feat in minimum.contLevel.keys():
-            wl = self.features[feat]["wl"]
+        for feat in self.interpolated_model.keys():
+            wl = self.interpolated_model[feat]["wl"]
             comparePoints = self.features[feat]["comparePoints"]
             
             bm = []
@@ -514,8 +549,8 @@ class spectralSynthesizer( object ):
 
     def computeCovariance(self, minimum):
         self.computeHessian(minimum)
-        self.covariance = 2*self.Hessian.getI()*(self.computeS(minimum)/(self.countPoints(minimum)-minimum.n_dims))
-        
+        self.computeS(minimum)
+        self.covariance = 2*self.Hessian.getI()*(minimum.S/(self.countPoints(minimum)-minimum.n_dims))
         return self.covariance
 
     def marquardt(self, chisq):
@@ -535,7 +570,7 @@ class spectralSynthesizer( object ):
             old_chisq = self.computeS(numpy.array(new_coordinates)[0])
             old_coordinates = numpy.array(new_coordinates)[0]
 
-    def gridSearch(self, **kwargs):
+    def blah_gridSearch(self, **kwargs):
         Tval = []
         Gval = []
         Bval = []
@@ -649,7 +684,10 @@ class spectralSynthesizer( object ):
         self.flat = {}
         self.z = {}
         self.interpolated_model = {}
+        self.veiling_model = {}
+        self.synthetic_spectrum = {}
         weights = {}
+        contLevels = {}
 
         for num in self.features.keys():       #Sets up the parameters for the features covered by the spectra
             feat = self.features[num]
@@ -665,7 +703,11 @@ class spectralSynthesizer( object ):
                 x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 0.0)
                 x_sm = x_sm/10000.0                # convert MOOG wavelengths to microns
                 self.interpolated_model[num] = {"T":4000.0, "G":400.0, "B":0.0, "wl":x_sm, "flux":y_sm}
+                self.veiling_model[num] = {"T":0.0, "r":0.0, "flux":[]}
+                self.synthetic_spectrum[num] = []
                 self.findWavelengthShift(x_window, flat, x_sm, y_sm)      #Finds the wavelength shift
+
+                contLevels[num] = 1.0
                 
                 #kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
                 #kwargs["noBField"]=True
@@ -675,25 +717,128 @@ class spectralSynthesizer( object ):
         gridPoints = []
         chiSquaredMap = self.dataBaseDir+'gridSearch/'+kwargs["outfile"]+'.chisq'
         if not(os.path.exists(chiSquaredMap)):
-            for T in self.ranges["T"]:
-                for G in self.ranges["G"]:
-                    for B in self.ranges["B"]:
+            out=open(chiSquaredMap, 'w')
+            for T in self.coarseRanges["T"]:
+                for G in self.coarseRanges["G"]:
+                    for B in self.coarseRanges["B"]:
                         gp = gridPoint({"T":T, "G":G, "B":B}, contLevels, 0.0)
-                        self.gridSearch(gp)
+                        self.computeS(gp, computeVeiling=True)
                         gridPoints.append(gp)
+                        #min_point = min(gridPoints)
+                        #print min_point.dump()
+                        #self.computeS(min_point, plt=plt)
+                        print "Last point: T =" + str(T)+", G ="+str(G)+", B ="+str(B)+", S ="+str(gridPoints[-1].S)+", r_2.2 ="+str(gridPoints[-1].coords["r"])
+                        out.write('%10.3f%10.3f%10.3f%10.3f%10.3e\n' % (T, G, B, gp.coords["r"], gp.S) )
+            out.close()
         else:
-            gridPoints = self.readChiSquaredMap(chiSquaredMap)
-                
-        initial_guess = self.calc_initial_guess(gridPoints)
-        best_coords = self.newton_search(initial_guess, plt)
-        self.saveFigures(best_coords, outfile=outfile)
-        #self.saveFigures(best_coords, outfile=outfile+'_B=0')
-        covariance = self.computeCovariance(best_coords)
+            data = open(chiSquaredMap, 'r').readlines()
+            for line in data:
+                l = line.split()
+                gp = gridPoint({"T":float(l[0]), "G":float(l[1]), "B":float(l[2])}, contLevels, float(l[3]))
+                gp.S = float(l[4])
+                gridPoints.append(gp)
+        
+        self.plotContour(gridPoints, outfile=outfile)
+        fineRange = self.zoomIn(gridPoints)
 
-        return best_coords, covariance
+        fineGrid = []
+        chiSquaredZoomMap = self.dataBaseDir+'gridSearch/'+kwargs["outfile"]+'.chisq.zoom'
+        if not(os.path.exists(chiSquaredZoomMap)):
+            out=open(chiSquaredZoomMap, 'w')
+            for T in fineRange["T"]:
+                for G in fineRange["G"]:
+                    for B in fineRange["B"]:
+                        gp = gridPoint({"T":T, "G":G, "B":B}, contLevels, 0.0)
+                        self.computeS(gp, computeVeiling=True)
+                        fineGrid.append(gp)
+                        print "Last point: T =" + str(T)+", G ="+str(G)+", B ="+str(B)+", S ="+str(fineGrid[-1].S)+", r_2.2 ="+str(fineGrid[-1].coords["r"])
+                        out.write('%10.3f%10.3f%10.3f%10.3f%10.3e\n' % (T, G, B, gp.coords["r"], gp.S) )
+            out.close()
+        else:
+            data = open(chiSquaredZoomMap, 'r').readlines()
+            for line in data:
+                l = line.split()
+                gp = gridPoint({"T":float(l[0]), "G":float(l[1]), "B":float(l[2])}, contLevels, float(l[3]))
+                gp.S = float(l[4])
+                fineGrid.append(gp)
+
+        self.plotContour(fineGrid, mode="fine", outfile = outfile)
+        order = numpy.argsort(fineGrid)
+        T = []
+        G = []
+        B = []
+        r = []
+        for i in order[0:10]:
+            T.append(fineGrid[order[i]].coords["T"])
+            G.append(fineGrid[order[i]].coords["G"])
+            B.append(fineGrid[order[i]].coords["B"])
+            r.append(fineGrid[order[i]].coords["r"])
+        initial_guess = gridPoint({"T":numpy.mean(T), "G":numpy.mean(G), "B":numpy.mean(B)}, contLevels, numpy.mean(r))
+        #best_coords = self.newton_search(initial_guess)
+        self.saveFigures(initial_guess, outfile=outfile)
+        #self.saveFigures(best_coords, outfile=outfile+'_B=0')
+        covariance = self.computeCovariance(initial_guess)
+
+        return initial_guess, covariance
+
+    def zoomIn(self, gridPoints):
+        order = numpy.argsort(gridPoints)
+        T = []
+        G = []
+        B = []
+        for i in order[0:10]:
+            T.append(gridPoints[i].coords["T"])
+            G.append(gridPoints[i].coords["G"])
+            B.append(gridPoints[i].coords["B"])
+        
+        retval = {}
+        retval["T"] = self.ranges["T"][scipy.where( (self.ranges["T"] >= min(T)) & (self.ranges["T"] <= max(T)) )[0]]
+        retval["G"] = self.ranges["G"][scipy.where( (self.ranges["G"] >= min(G)) & (self.ranges["G"] <= max(G)) )[0]]
+        retval["B"] = self.ranges["B"][scipy.where( (self.ranges["B"] >= min(B)) & (self.ranges["B"] <= max(B)) )[0]]
+        return retval
+
+    def plotContour(self, gps, mode="coarse", outfile='TEST'):
+        T = []
+        G = []
+        B = []
+        S = []
+        for gp in gps:
+            T.append(gp.coords["T"])
+            G.append(gp.coords["G"])
+            B.append(gp.coords["B"])
+            S.append(gp.S)
+
+        T = numpy.array(T)
+        G = numpy.array(G)
+        B = numpy.array(B)
+        S = numpy.array(S)
+
+
+        minval = min(S)
+        maxval = max(S)
+        T_coords = numpy.unique(T)
+        G_coords = numpy.unique(G)
+
+        for bfield in numpy.unique(B):
+            bm = scipy.where(B == bfield)
+            Z = S[bm].reshape(len(T_coords), len(G_coords))
+            Tpts = T[bm].reshape(len(T_coords), len(G_coords))
+            Gpts = G[bm].reshape(len(T_coords), len(G_coords))
+            fig = pyplot.figure(0)
+            pyplot.clf()
+            pyplot.contourf(Tpts, Gpts, Z, extent=(min(T_coords), min(G_coords), max(T_coords), max(G_coords)),
+            norm=matplotlib.colors.Normalize(vmin=minval, vmax=maxval))
+            if mode=="fine":
+                pyplot.savefig(outfile+"_B_"+str(bfield)+'kG_zoom.eps')
+            else:
+                pyplot.savefig(outfile+'_B_'+str(bfield)+'kG.eps')
+            print bfield
+            print Z
+            print Tpts
+            print Gpts
 
     def gridSearch(self, gp):
-        gp.addChiSquared(self.computeS(gp, 'computeVeiling'))
+        gp.addChiSquared(self.computeS(gp, computeVeiling=True))
 
     def saveFigures(self, coords, **kwargs): 
         fig_width_pt = 246.0
