@@ -54,9 +54,6 @@ def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
     mn = numpy.mean(flat[nostrong])
     sig = numpy.std(flat[nostrong])
 
-    print mn, numpy.mean(flat)
-    print sig, numpy.std(flat)
-
     first_pass = scipy.where( (flat > mn-0.5*sig) & (flat < mn+2*sig) )[0]
 
     mn = numpy.mean(flat[first_pass])
