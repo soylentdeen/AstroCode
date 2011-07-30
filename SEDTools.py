@@ -42,15 +42,27 @@ def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
 
     #first = Gnuplot.Data(wl, flat, with_='lines')
 
-    mn = numpy.mean(flat)
-    sig = numpy.std(flat)
+    strong = []
+    for sl in zip(kwargs["strongLines"], kwargs["lineWidths"]):
+        strong.extend( scipy.where(abs(wl - sl[0]) < sl[1])[0])
 
-    first_pass = scipy.where( (flat > mn-0.5*sig) & (flat < mn+sig) )[0]
+    nostrong = []
+    for i in range(len(wl)):
+        if not(i in strong):
+            nostrong.append(i)
+
+    mn = numpy.mean(flat[nostrong])
+    sig = numpy.std(flat[nostrong])
+
+    print mn, numpy.mean(flat)
+    print sig, numpy.std(flat)
+
+    first_pass = scipy.where( (flat > mn-0.5*sig) & (flat < mn+2*sig) )[0]
 
     mn = numpy.mean(flat[first_pass])
     sig = numpy.std(flat[first_pass])
 
-    second_pass = scipy.where( (flat > mn) & (flat < mn+sig) )[0]
+    second_pass = scipy.where( (flat > mn) & (flat < mn+2*sig) )[0]
     spectral_slope = spectralSlope(wl[second_pass], flat[second_pass], dFlux[second_pass], wlStart, wlStop, 0.0,
     **kwargs)
 
@@ -69,7 +81,7 @@ def removeContinuum(wl, flux, dFlux, wlStart, wlStop, **kwargs):
         raw_input()
     '''
 
-    spline = scipy.interpolate.UnivariateSpline(wl[second_pass], flat[second_pass]+sig, s=500)
+    spline = scipy.interpolate.UnivariateSpline(wl[second_pass], flat[second_pass]+sig, s=100)
     #sp = Gnuplot.Data(wl, spline(wl))
     #plt.plot(first, sp)
     #raw_input()

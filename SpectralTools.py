@@ -23,7 +23,7 @@ def resample(x, y, R):
     newy = f(newx)
     const = numpy.ones(len(newx))
 
-    xk = numpy.array(range(4.0*subsample))
+    xk = numpy.array(range(int(4.0*subsample)))
     yk = numpy.exp(-(xk-(2.0*subsample))**2.0/(subsample**2.0/(4.0*numpy.log(2.0))))
     
     result = scipy.signal.convolve(newy, yk, mode ='valid')
