@@ -60,7 +60,7 @@ class spectralSynthesizer( object ):
         feat_num = [1, 2, 3, 4, 5]
         xstart = [1.150, 1.480, 1.57, 2.170, 2.240]
         xstop = [1.2200, 1.520, 1.60, 2.230, 2.310]
-        slope_start = [1.13, 1.47, 1.55, 2.100, 2.23]
+        slope_start = [1.15, 1.47, 1.55, 2.100, 2.23]
         slope_stop = [1.25, 1.54, 1.62, 2.25, 2.31]
         strongLines = [[1.16, 1.168, 1.176, 1.1828, 1.1884, 1.198], [1.488, 1.503, 1.5045], [1.5745, 1.5770],
         [2.166,2.2066], [2.263, 2.267, 2.30]]
@@ -73,13 +73,14 @@ class spectralSynthesizer( object ):
 
         self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
         self.dataBaseDir='/home/grad58/deen/Data/StarFormation/bfields/'
-        self.delta = {"T":50.0, "G":25.0, "B":0.25, "dy":0.00025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
+        self.delta = {"T":100.0, "G":50.0, "B":0.25, "dy":0.00025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
         #self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
         self.convergencePoints = []
 
-        self.calc_VeilingSED(8000.0, 2500.0, 1400.0, 62.0, 910.0)
+        self.calc_VeilingSED(8000.0, 5000.0, 1400.0, 30.0, 6100.0)
+        #self.calc_VeilingSED(8000.0, 2500.0, 1400.0, 62.0, 910.0)
 
         #for i in range(len(xstart)):
         #for i in [4]:
@@ -226,8 +227,9 @@ class spectralSynthesizer( object ):
         cont_value = scipy.optimize.fmin(self.continuumTest, cont_guess, (coord, self.interpolated_model.keys()),
         disp=False)
         print cont_value
+        fit_target = coord.S/100.0
         params = [coord.coords["T"], coord.coords["G"], coord.coords["B"], coord.coords["r"]]
-        physical_parameters = scipy.optimize.fmin(self.fitPhysical, params, (coord, 1), xtol=100, ftol=100)
+        physical_parameters = scipy.optimize.fmin(self.fitPhysical, params, (coord, 1), xtol=fit_target, ftol=fit_target)
         print 'Converged!'
 
     def allTest(self, guess, coord, junk):
@@ -444,14 +446,16 @@ class spectralSynthesizer( object ):
         delta = (delta_one + delta_two)/2.0
         return (coord_one.S-coord_two.S)/(2*delta)
 
-    def compute2ndDeriv(self, coords, keys, i, j):
+    def compute2ndDeriv(self, c, keys, i, j):
+        coords = copy.deepcopy(c)
         key_i = keys[i]
         key_j = keys[j]
         ifactor = 1.0
         if ( key_i in ["T", "G", "B"]):
-            while (((coords.coords[key_i] - self.delta[key_i]*2*ifactor) < coords.limits[key_i][0]) |
-            ((coords.coords[key_i]+self.delta[key_i]*2*ifactor) > coords.limits[key_i][1])):
-                ifactor *= 0.8
+            if ((coords.coords[key_i] - self.delta[key_i]*2*ifactor) <= coords.limits[key_i][0]):
+                coords.coords[key_i] += self.delta[key_i]*2.5*ifactor
+            if ((coords.coords[key_i]+self.delta[key_i]*2*ifactor) >= coords.limits[key_i][1]):
+                coords.coords[key_i] -= self.delta[key_i]*2.5*ifactor
         coord_one = copy.deepcopy(coords)
         coord_two = copy.deepcopy(coords)
         coord_three = copy.deepcopy(coords)
@@ -471,9 +475,10 @@ class spectralSynthesizer( object ):
 
         jfactor = 1.0
         if ( key_j in ["T", "G", "B"]):
-            while (((coords.coords[key_j] - self.delta[key_j]*2*jfactor) < coords.limits[key_j][0]) |
-            ((coords.coords[key_j]+self.delta[key_j]*2*jfactor) > coords.limits[key_j][1])):
-                jfactor *= 0.8
+            if ((coords.coords[key_j] - self.delta[key_j]*jfactor) <= coords.limits[key_j][0]):
+                coords.coords[key_j] += self.delta[key_j]*jfactor
+            if  ((coords.coords[key_j]+self.delta[key_j]*jfactor) >= coords.limits[key_j][1]):
+                coords.coords[key_j] -= self.delta[key_j]*jfactor
         if (key_j in self.interpolated_model.keys()):
             coord_one.coords[key_j] += self.delta["dy"]*jfactor
             coord_two.coords[key_j] += self.delta["dy"]*jfactor
@@ -487,6 +492,11 @@ class spectralSynthesizer( object ):
             coord_four.coords[key_j] -= self.delta[key_j]*jfactor
             denominator *= self.delta[key_j]*jfactor
 
+        coord_one.checkLimits()
+        coord_two.checkLimits()
+        coord_three.checkLimits()
+        coord_four.checkLimits()
+        
         self.computeS(coord_one)
         self.computeS(coord_two)
         self.computeS(coord_three)
@@ -555,6 +565,7 @@ class spectralSynthesizer( object ):
         self.computeHessian(minimum)
         self.computeS(minimum)
         self.covariance = 2*self.Hessian.getI()*(minimum.S/(self.countPoints(minimum)-minimum.n_dims))
+        print asdf
         return self.covariance
 
     def marquardt(self, chisq):
@@ -660,25 +671,38 @@ class spectralSynthesizer( object ):
         initial_guess={"T":numpy.mean(Tval[order[0:10]]),"G":numpy.mean(Gval[order[0:10]]),"B":numpy.mean(Bval[order[0:10]])}
         return initial_guess
 
-    def calc_initial_guess(self, features, weights):
-        temps = []
-        gravs = []
-        Bs = []
-        Ws = []
-        for key in features.keys():
-            temps.append(features[key]["T"])
-            gravs.append(features[key]["G"])
-            Bs.append(features[key]["B"])
-            Ws.append(weights[key])
+    def computeErrors(self, wl, flux, error, best_point):
+        self.x_window = {}
+        self.flat = {}
+        self.z = {}
+        self.interpolated_model = {}
+        self.veiling_model = {}
+        self.synthetic_spectrum = {}
+        contLevels = {}
 
-        retval = {"T":numpy.average(temps, weights=Ws), "G":numpy.average(gravs, weights=Ws), "B":numpy.average(Bs,
-        weights=Ws)}
+        for num in self.features.keys():     #Sets up the parameters for the features covered by the spectra
+            feat = self.features[num]
+            self.currFeat = num
+            if (min(wl) < feat["xstart"]):
+                x_window, flat, z = SEDTools.removeContinuum(wl, flux, error, feat["slope_start"], feat["slope_stop"],
+                strongLines=feat["strongLines"], lineWidths=feat["lineWidths"], errors=True)
 
-        if (2 in weights.keys()):
-            if (weights[2] > 100.0):
-                retval["G"] = features[2]["G"]
+                self.x_window[num] = x_window
+                self.flat[num] = flat
+                self.z[num] = z
 
-        return retval
+                x_sm, y_sm = self.readMOOGModel(4000.0, 400.0, 0.0)
+                x_sm = x_sm/10000.0                # convert MOOG wavelengths to microns
+                self.interpolated_model[num] = {"T":4000.0, "G":400.0, "B":0.0, "wl":x_sm, "flux":y_sm}
+                self.veiling_model[num] = {"T":0.0, "r":0.0, "flux":[]}
+                self.synthetic_spectrum[num] = []
+                self.findWavelengthShift(x_window, flat, x_sm, y_sm)      #Finds the wavelength shift
+
+                contLevels[num] = 1.0
+        
+        covariance = self.computeCovariance(best_point)
+
+        return covariance
 
     def fitSpectrum(self, wl, flux, error, plt, **kwargs):
         outfile = kwargs["outfile"]
@@ -690,10 +714,9 @@ class spectralSynthesizer( object ):
         self.interpolated_model = {}
         self.veiling_model = {}
         self.synthetic_spectrum = {}
-        weights = {}
         contLevels = {}
 
-        for num in self.features.keys():       #Sets up the parameters for the features covered by the spectra
+        for num in self.features.keys():    #Sets up the parameters for the features covered by the spectra
             feat = self.features[num]
             self.currFeat = num
             if (min(wl) < feat["xstart"]):
@@ -713,11 +736,6 @@ class spectralSynthesizer( object ):
 
                 contLevels[num] = 1.0
                 
-                #kwargs["outfile"]=self.dataBaseDir+outfile+'_feat_'+str(self.features[self.currFeat]["num"])+'.dat'
-                #kwargs["noBField"]=True
-                #guess_coords[num] = self.gridSearch(**kwargs)
-                #weights[num] = numpy.mean(flat/z)
-
         gridPoints = []
         chiSquaredMap = self.dataBaseDir+'gridSearch/'+kwargs["outfile"]+'.chisq'
         if not(os.path.exists(chiSquaredMap)):
@@ -728,6 +746,7 @@ class spectralSynthesizer( object ):
                         gp = gridPoint({"T":T, "G":G, "B":B}, contLevels, 0.0)
                         self.computeS(gp, computeVeiling=True)
                         gridPoints.append(gp)
+                        self.convergencePoints.append(gp)
                         #min_point = min(gridPoints)
                         #print min_point.dump()
                         #self.computeS(min_point, plt=plt)
@@ -741,6 +760,7 @@ class spectralSynthesizer( object ):
                 gp = gridPoint({"T":float(l[0]), "G":float(l[1]), "B":float(l[2])}, contLevels, float(l[3]))
                 gp.S = float(l[4])
                 gridPoints.append(gp)
+                self.convergencePoints.append(gp)
         
         self.plotContour(gridPoints, outfile=outfile)
         fineRange = self.zoomIn(gridPoints)
@@ -755,6 +775,7 @@ class spectralSynthesizer( object ):
                         gp = gridPoint({"T":T, "G":G, "B":B}, contLevels, 0.0)
                         self.computeS(gp, computeVeiling=True)
                         fineGrid.append(gp)
+                        self.convergencePoints.append(gp)
                         print "Last point: T =" + str(T)+", G ="+str(G)+", B ="+str(B)+", S ="+str(fineGrid[-1].S)+", r_2.2 ="+str(fineGrid[-1].coords["r"])
                         out.write('%10.3f%10.3f%10.3f%10.3f%10.3e\n' % (T, G, B, gp.coords["r"], gp.S) )
             out.close()
@@ -765,6 +786,7 @@ class spectralSynthesizer( object ):
                 gp = gridPoint({"T":float(l[0]), "G":float(l[1]), "B":float(l[2])}, contLevels, float(l[3]))
                 gp.S = float(l[4])
                 fineGrid.append(gp)
+                self.convergencePoints.append(gp)
 
         self.plotContour(fineGrid, mode="fine", outfile = outfile)
         order = numpy.argsort(fineGrid)
@@ -778,6 +800,7 @@ class spectralSynthesizer( object ):
             B.append(fineGrid[order[i]].coords["B"])
             r.append(fineGrid[order[i]].coords["r"])
         initial_guess = gridPoint({"T":numpy.mean(T), "G":numpy.mean(G), "B":numpy.mean(B)}, contLevels, numpy.mean(r))
+        #initial_guess = gridPoint({"T":4250, "G":420.0, "B":2.0}, contLevels, 0.8)
         print 'Preliminary Guess:'
         print initial_guess.dump()
         self.findBestFitModel(initial_guess)
@@ -837,16 +860,15 @@ class spectralSynthesizer( object ):
             Gpts = G[bm].reshape(len(T_coords), len(G_coords))
             fig = pyplot.figure(0)
             pyplot.clf()
-            pyplot.contourf(Tpts, Gpts, Z, extent=(min(T_coords), min(G_coords), max(T_coords), max(G_coords)),
-            norm=matplotlib.colors.Normalize(vmin=minval, vmax=maxval))
+            pyplot.contour(Tpts, Gpts, Z, 25, extent=(min(T_coords), min(G_coords), max(T_coords), max(G_coords)))
             if mode=="fine":
                 pyplot.savefig(outfile+"_B_"+str(bfield)+'kG_zoom.eps')
             else:
                 pyplot.savefig(outfile+'_B_'+str(bfield)+'kG.eps')
-            print bfield
-            print Z
-            print Tpts
-            print Gpts
+            #print bfield
+            #print Z
+            #print Tpts
+            #print Gpts
 
     def gridSearch(self, gp):
         gp.addChiSquared(self.computeS(gp, computeVeiling=True))
