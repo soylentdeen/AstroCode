@@ -108,10 +108,84 @@ class spectral_Line( object ):
         self.lower = Observed_Level(self.Jlow, self.glow, self.EP)
         self.upper = Observed_Level(self.Jup, self.gup, self.EP+12400.0/self.wl)
         self.zeeman = {}
+        self.linpol = {}
+        self.lhcpol = {}
+        self.rhcpol = {}
         self.zeeman["NOFIELD"] = [[self.wl], [self.loggf]]
 
     def zeeman_splitting(self, B, **kwargs):
         self.compute_zeeman_transitions(B, **kwargs)
+        wl = []
+        lgf = []
+        for transition in self.pi_transitions:
+            if (transition.weight_perp > 0):
+                wl.append(transition.wavelength)
+                lgf.append(numpy.log10(transition.weight_perp*10.0**(self.loggf)))
+        self.zeeman["pi"] = [numpy.array(wl), numpy.array(lgf)]
+
+        wl = []
+        lgf = []
+        for transition in self.lcp_transitions:
+            if (transition.weight_para > 0):
+                wl.append(transition.wavelength)
+                lgf.append(numpy.log10(transition.weight_para*10.0**(self.loggf)))
+        self.zeeman["lcp"] = [numpy.array(wl), numpy.array(lgf)]
+
+        wl = []
+        lgf = []
+        for transition in self.rcp_transitions:
+            if (transition.weight_para > 0):
+                wl.append(transition.wavelength)
+                lgf.append(numpy.log10(transition.weight_para*10.0**(self.loggf)))
+        self.zeeman["rcp"] = [numpy.array(wl), numpy.array(lgf)]
+
+        '''
+        bohr_magneton = 5.78838176e-5           # eV*T^-1
+        hc = 12400                              # eV*Angstroems
+        eff_wl = []
+        eff_loggf = []
+        weights = []
+        for i in [-1, 0, 1]:
+            eff_wl.append(hc/(hc/self.wl+ i*self.geff*bohr_magneton*B))
+            eff_loggf.append(numpy.log10(10.0**self.loggf/3.0))
+        print 'Species = '+str(self.species)+', EP = '+str(self.EP)+', wl:'+str(self.wl)+'  effective lande g factor :'+str(self.geff) 
+        self.zeeman["geff"] = [numpy.array(eff_wl), numpy.array(eff_loggf)]
+        if "mu" in kwargs:
+            mus = kwargs["mu"]
+            for m in mus.keys():
+                mu = mus[m]
+                mu_wavelengths = []
+                mu_loggfs = []
+                lin_wavelengths = []
+                rcp_wavelengths = []
+                lcp_wavelengths = []
+                lin_loggfs = []
+                rcp_loggfs = []
+                lcp_loggfs = []
+                for transition in self.transitions:
+                    if ( ( (transition.weight_perp >0 )& (mu > 0.0) ) | ( (transition.weight_para > 0) & (mu < 3.14159) )):
+                        mu_wavelengths.append(transition.wavelength)
+                        lin_loggf = 0.0
+                        cp_loggf = 0.0
+                        if transition.weight_perp*numpy.sin(numpy.radians(mu)) > 0:
+                            lin_loggf += 10.0**(self.loggf)*transition.weight_perp*numpy.sin(mu)**2.0
+                            lin_wavelengths.append(transition.wavelength)
+                            lin_loggfs.append(numpy.log10(lin_loggf))
+                        if transition.weight_para*numpy.cos(numpy.radians(mu)) > 0:
+                            cp_loggf += 10.0**(self.loggf)*transition.weight_para*numpy.cos(mu)**2.0
+                            if transition.m_up > transition.m_low:
+                                rcp_wavelengths.append(transition.wavelength)
+                                rcp_loggfs.append(numpy.log10(cp_loggf))
+                            else:
+                                lcp_wavelengths.append(transition.wavelength)
+                                lcp_loggfs.append(numpy.log10(cp_loggf))
+                        mu_loggfs.append(numpy.log10(lin_loggf+cp_loggf))
+                   
+                self.zeeman['MU_'+str(m)] = [numpy.array(mu_wavelengths), numpy.array(mu_loggfs)]
+                self.linpol['MU_'+str(m)] = [numpy.array(lin_wavelengths), numpy.array(lin_loggfs)]
+                self.lhcpol['MU_'+str(m)] = [numpy.array(lcp_wavelengths), numpy.array(lcp_loggfs)]
+                self.rhcpol['MU_'+str(m)] = [numpy.array(rcp_wavelengths), numpy.array(rcp_loggfs)]
+        '''
 
     def compute_zeeman_transitions(self, B, **kwargs):    # Computes the splitting associated with the Zeeman effect
         bohr_magneton = 5.78838176e-5           # eV*T^-1
@@ -125,15 +199,16 @@ class spectral_Line( object ):
             upper_energies[mj] = self.upper.E+mj*self.upper.g*bohr_magneton*B
 
         transitions = []
-        sigma_transitions_para = []             # Energy of Sigma components in the parallel direction
-        sigma_weights_para = []                 # Weights of sigma components in parallel direction
-        sigma_transitions_perp = []             # Energy of Sigma component in perpendicular direction
-        sigma_weights_perp = []                 # Weights of sigma components in perpendicular direction
-        pi_transitions = []                     # Pi components are only seen in perpendicular direction
-        pi_weights = []
+        pi_transitions = []
+        rcp_transitions = []
+        lcp_transitions = []
+        total_weight = 0.0
 
         delta_J = self.upper.J - self.lower.J
         J1 = self.lower.J
+
+        self.geff = 0.5* (self.lower.g+self.upper.g) + 0.25*(self.lower.g - self.upper.g)*(self.lower.J*(self.lower.J+1)
+        - self.upper.J*(self.upper.J+1.0))
 
         for mj in lower_energies.keys():
             if (delta_J == 0.0):
@@ -141,132 +216,89 @@ class spectral_Line( object ):
                     weight = (J1-mj)*(J1+mj+1.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj+1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1-mj)*(J1+mj+1.0)/4.0)
-                    sigma_weights_para.append((J1-mj)*(J1+mj+1.0)/2.0)
+                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj+1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
                 if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
                     weight= mj**2.0
                     transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
                     mj))
-                    pi_transitions.append(upper_energies[mj] - lower_energies[mj])
-                    pi_weights.append(mj**2.0)
+                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
+                    mj))
+                    total_weight += weight
                 if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
                     weight = (J1+mj)*(J1-mj+1.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj-1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1+mj)*(J1-mj+1.0)/4.0)
-                    sigma_weights_para.append((J1+mj)*(J1-mj+1.0)/2.0)
+                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj-1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
             elif (delta_J == 1.0):
                 if upper_energies.has_key(mj+1.0):    # delta_Mj = +1 sigma component
                     weight = (J1+mj+1.0)*(J1+mj+2.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj+1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1+mj+1.0)*(J1+mj+2.0)/4.0)
-                    sigma_weights_para.append((J1+mj+1.0)*(J1+mj+2.0)/2.0)
+                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj+1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
                 if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
                     weight= (J1+1.0)**2.0 - mj**2.0
                     transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
                     mj))
-                    pi_transitions.append(upper_energies[mj] - lower_energies[mj])
-                    pi_weights.append((J1+1.0)**2.0 - mj**2.0)
+                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
+                    mj))
+                    total_weight += weight
                 if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
                     weight = (J1-mj+1.0)*(J1-mj+2.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj-1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1-mj+1.0)*(J1-mj+2.0)/4.0)
-                    sigma_weights_para.append((J1-mj+1.0)*(J1-mj+2.0)/2.0)
+                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj-1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
             elif (delta_J == -1.0):
                 if upper_energies.has_key(mj+1.0):    # delta_Mj = +1 sigma component
                     weight = (J1-mj)*(J1-mj-1.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj+1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj+1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1-mj)*(J1-mj-1.0)/4.0)
-                    sigma_weights_para.append((J1-mj)*(J1-mj-1.0)/2.0)
+                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj+1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
                 if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
                     weight= J1**2.0 - mj**2.0
                     transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
                     mj))
-                    pi_transitions.append(upper_energies[mj] - lower_energies[mj])
-                    pi_weights.append(J1**2.0 - mj**2.0)
+                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
+                    mj))
+                    total_weight += weight
                 if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
                     weight = (J1+mj)*(J1+mj-1.0)
                     transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
                     weight/4.0, mj-1, mj))
-                    sigma_transitions_perp.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_transitions_para.append(upper_energies[mj-1] - lower_energies[mj])
-                    sigma_weights_perp.append((J1+mj)*(J1+mj-1.0)/4.0)
-                    sigma_weights_para.append((J1+mj)*(J1+mj-1.0)/2.0)
-
-        sigma_weights_para = numpy.array(sigma_weights_para)
-        sigma_weights_perp = numpy.array(sigma_weights_perp)
-        pi_weights = numpy.array(pi_weights)
-
-        scale_factor = numpy.sum(sigma_weights_perp) + numpy.sum(pi_weights) + numpy.sum(sigma_weights_para)
-
-        sigma_weights_para /= scale_factor
-        sigma_weights_perp /= scale_factor
-        pi_weights /= scale_factor
-        sigma_energies_para = numpy.array(sigma_transitions_para)
-        sigma_energies_perp = numpy.array(sigma_transitions_perp)
-        pi_energies = numpy.array(pi_transitions)
-
-        comp_wavelengths = []
-        comp_gfs = []
-        comp_loggfs = []
+                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                    0.0, mj-1, mj))
+                    total_weight += weight/2.0
+                    #total_weight += 3.0*weight/4.0
+                    
         for transition in transitions:
-            if ( (transition.weight_perp > 0) & (transition.weight_para > 0) ):
-                comp_wavelengths.append(transition.wavelength)
-                comp_gfs.append(transition.weight_perp*0.40183 +  transition.weight_para*0.2865)
+            transition.weight_para /= (total_weight/2.0)
+            transition.weight_perp /= (total_weight/2.0)
 
-        factor = 10.0**(self.loggf)/numpy.sum(comp_gfs)
-        for gf in comp_gfs:
-            comp_loggfs.append(numpy.log10(gf*factor))
-        self.zeeman["FULL"] = [numpy.array(comp_wavelengths), numpy.array(comp_loggfs)]
-
-        para_loggfs = []
-        para_wavelengths = []
-        perp_loggfs = []
-        perp_wavelengths = []
-        for line in zip(sigma_weights_para, sigma_energies_para):
-           if (line[0] > 0):
-               para_loggfs.append(numpy.log10(10.0**self.loggf*line[0]))
-               para_wavelengths.append(hc/line[1])
-
-        perp_weights = numpy.append(sigma_weights_perp, pi_weights)
-        perp_energies = numpy.append(sigma_energies_perp, pi_energies)
-
-        for line in zip(perp_weights, perp_energies):
-            if (line[0] > 0):
-                perp_loggfs.append(numpy.log10(10.0**self.loggf*line[0]))
-                perp_wavelengths.append(hc/line[1])
-
-        self.zeeman["LONG"] = [numpy.array(para_wavelengths), numpy.array(para_loggfs)]
-        self.zeeman["TRANS"] = [numpy.array(perp_wavelengths),numpy.array(perp_loggfs)]
-
-        if "mu" in kwargs:
-            mu_wavelengths = []
-            mu_loggfs = []
-            mu = kwargs["mu"]
-            for perp in zip(perp_wavelengths, perp_loggfs):
-                mu_wavelengths.append(perp[0])
-                if perp[0] in para_wavelengths:
-                    i = para_wavelengths.index(perp[0])
-                    mu_loggfs.append( numpy.log10(10.0**(perp[1])*numpy.sin(numpy.radians(mu))**2.0 +
-                    10.0**(para_loggfs[i])*numpy.cos(numpy.radians(mu))**2.0))
-                else:
-                    mu_loggfs.append( numpy.log10(10.0**(perp[1])*numpy.sin(numpy.radians(mu))**2.0))
-                   
-            self.zeeman['MU_'+str(kwargs["mu"])] = [numpy.array(mu_wavelengths), numpy.array(mu_loggfs)]
- 
+        for transition in rcp_transitions:
+            transition.weight_para /= (total_weight/2.0)
+        for transition in pi_transitions:
+            transition.weight_perp /= (total_weight/2.0)
+        for transition in lcp_transitions:
+            transition.weight_para /= (total_weight/2.0)
+            
+        self.transitions = transitions
+        self.pi_transitions = pi_transitions
+        self.lcp_transitions = lcp_transitions
+        self.rcp_transitions = rcp_transitions
 
     def dump(self, **kwargs):
         if "out" in kwargs:
@@ -279,10 +311,60 @@ class spectral_Line( object ):
             elif kwargs["mode"].upper() == 'MOOG':
                 if ( (self.EP < 20.0) & (self.species % 1 <= 0.2) ):
                     if ( ("zeeman" in kwargs) & (self.DissE == -99.0) ):
-                        order = numpy.argsort(self.zeeman[kwargs["zeeman"]][0])
+                        if (kwargs["zeeman"] == 'straight'):
+                            for i in range(len(self.zeeman["pi"][0])):
+                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["pi"][0][i],
+                                self.species,self.EP,self.zeeman["pi"][1][i]))
+                                if self.VdW == 0:
+                                    out.write('%20s%10.3f\n'% (' ',0.0))
+                                else:
+                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ', 0.0))
+                            for i in range(len(self.zeeman["lcp"][0])):
+                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["lcp"][0][i],
+                                self.species,self.EP,self.zeeman["lcp"][1][i]))
+                                if self.VdW == 0:
+                                    out.write('%20s%10.3f\n'% (' ',-1.0))
+                                else:
+                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ',-1.0))
+                            for i in range(len(self.zeeman["rcp"][0])):
+                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["rcp"][0][i],
+                                self.species,self.EP,self.zeeman["rcp"][1][i]))
+                                if self.VdW == 0:
+                                    out.write('%20s%10.3f\n'% (' ',1.0))
+                                else:
+                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ', 1.0))
+                        else:
+                            order = numpy.argsort(self.zeeman[kwargs["zeeman"]][0])
+                            for i in range(len(order)):
+                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman[kwargs["zeeman"]][0][order[i]],
+                                self.species,self.EP,self.zeeman[kwargs["zeeman"]][1][order[i]]))
+                                if self.VdW == 0:
+                                    out.write('\n')
+                                else:
+                                    out.write('%10.3f\n' % self.VdW)
+                    elif ( ("linpol" in kwargs) & (self.DissE == -99.0) ):
+                        order = numpy.argsort(self.linpol[kwargs["linpol"]][0])
                         for i in range(len(order)):
-                            out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman[kwargs["zeeman"]][0][order[i]],
-                            self.species,self.EP,self.zeeman[kwargs["zeeman"]][1][order[i]]))
+                            out.write('%10.3f%10s%10.3f%10.3f' % (self.linpol[kwargs["linpol"]][0][order[i]],
+                            self.species,self.EP,self.linpol[kwargs["linpol"]][1][order[i]]))
+                            if self.VdW == 0:
+                                out.write('\n')
+                            else:
+                                out.write('%10.3f\n' % self.VdW)
+                    elif ( ("lhcpol" in kwargs) & (self.DissE == -99.0) ):
+                        order = numpy.argsort(self.lhcpol[kwargs["lhcpol"]][0])
+                        for i in range(len(order)):
+                            out.write('%10.3f%10s%10.3f%10.3f' % (self.lhcpol[kwargs["lhcpol"]][0][order[i]],
+                            self.species,self.EP,self.lhcpol[kwargs["lhcpol"]][1][order[i]]))
+                            if self.VdW == 0:
+                                out.write('\n')
+                            else:
+                                out.write('%10.3f\n' % self.VdW)
+                    elif ( ("rhcpol" in kwargs) & (self.DissE == -99.0) ):
+                        order = numpy.argsort(self.rhcpol[kwargs["rhcpol"]][0])
+                        for i in range(len(order)):
+                            out.write('%10.3f%10s%10.3f%10.3f' % (self.rhcpol[kwargs["rhcpol"]][0][order[i]],
+                            self.species,self.EP,self.rhcpol[kwargs["rhcpol"]][1][order[i]]))
                             if self.VdW == 0:
                                 out.write('\n')
                             else:

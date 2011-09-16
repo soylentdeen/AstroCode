@@ -84,7 +84,7 @@ class spectralSynthesizer( object ):
 
         #for i in range(len(xstart)):
         #for i in [4]:
-        for i in [0,1,3,4]:
+        for i in [0,1,3, 4]:
             feat = dict()
             feat["num"] = feat_num[i]
             feat["xstart"] = xstart[i]
