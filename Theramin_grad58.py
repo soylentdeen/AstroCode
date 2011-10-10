@@ -57,7 +57,7 @@ class gridPoint( object ):    # Object which contains information about a Chi-Sq
 
 class spectralSynthesizer( object ):
     def __init__(self):
-        feat_num = [1, 2, 3, 4, 5]
+        feat_num = ['alpha', 'bravo', '-3', 'charlie', 'delta']
         xstart = [1.150, 1.480, 1.57, 2.170, 2.240]
         xstop = [1.2200, 1.520, 1.60, 2.230, 2.310]
         slope_start = [1.15, 1.47, 1.55, 2.100, 2.23]
@@ -67,24 +67,24 @@ class spectralSynthesizer( object ):
         lineWidths = [[0.0035, 0.0035, 0.0035, 0.0025, 0.0025, 0.0025], [0.005, 0.005, 0.01], [0.005, 0.005],[0.005, 0.005],[0.005, 0.005,0.01]]
         #comparePoints = [[[1.1816,1.1838],[1.1871,1.1900],[1.1942,1.1995],[1.2073,1.2087]], [[2.1765, 2.18], [2.1863,2.1906], [2.199, 2.2015], [2.2037, 2.210]], [[2.2525,2.2551],[2.2592, 2.2669], [2.2796, 2.2818]]]
         comparePoints = [[[1.157,1.17],[1.18,1.1995],[1.2073,1.212]],[[1.482, 1.519]],[[1.571,1.599]],
-        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]],[[2.2425,2.31]]]#[[2.2425,2.258],[2.270,2.287]]]#[2.2425,2.31]]] 
+        [[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]],[[2.2425, 2.31]]]#[[2.2425,2.258],[2.270,2.287]]]#[2.2425,2.31]]] 
         #[[2.1765,2.18],[2.1863,2.2015], [2.203, 2.23]], [[2.2425,2.258]]]
         continuumPoints = [[[1.165,1.168],[1.171,1.174],[1.19,1.195],[1.211, 1.22]],[[1.49,1.50],[1.508,1.52]],[[1.57, 1.60]],[[2.192,2.196],[2.211,2.218]],[[2.24, 2.258],[2.27, 2.277],[2.86,2.291]]]
 
-        self.modelBaseDir='/home/deen/Data/StarFormation/MOOG/zeeman/smoothed/'
-        self.dataBaseDir='/home/deen/Data/StarFormation/bfields/'
+        self.modelBaseDir='/home/grad58/deen/Data/StarFormation/MOOG/zeeman/stokes_smoothed/'
+        self.dataBaseDir='/home/grad58/deen/Data/StarFormation/bfields/stokes/'
         self.delta = {"T":100.0, "G":50.0, "B":0.25, "dy":0.00025, "r":0.1}    # [dT, dG, dB, d_dy, dr]
         #self.limits = {"T":[2500.0, 6000.0], "G":[300.0, 500.0], "B":[0.0,4.0], "dy":[0.95, 1.05], "r":[0.0, 10.0]}
         self.floaters = {"T":True, "G":True, "B":True, "dy":True, "r":True}
         self.features = {}
         self.convergencePoints = []
 
-        self.calc_VeilingSED(8000.0, 5000.0, 1400.0, 30.0, 6100.0)
-        #self.calc_VeilingSED(8000.0, 2500.0, 1400.0, 62.0, 910.0)
+        #self.calc_VeilingSED(8000.0, 5000.0, 1400.0, 30.0, 6100.0)
+        self.calc_VeilingSED(8000.0, 2500.0, 1400.0, 62.0, 910.0)
 
         #for i in range(len(xstart)):
         #for i in [4]:
-        for i in [0,1,3,4]:
+        for i in [0, 1, 3,4]:
             feat = dict()
             feat["num"] = feat_num[i]
             feat["xstart"] = xstart[i]
@@ -341,7 +341,7 @@ class spectralSynthesizer( object ):
         return new_y
 
     def readMOOGModel(self, T, G, B, **kwargs):
-        df = self.modelBaseDir+'B_'+str(B)+'kG/f'+str(self.features[self.currFeat]["num"])+'_MARCS_T'+str(int(T))+'G'+str(int(G))+'_R2000'
+        df = self.modelBaseDir+'B_'+str(B)+'kG/'+str(self.features[self.currFeat]["num"])+'_T'+str(int(T))+'G'+str(int(G))+'_R2000'
         x_sm, y_sm = SpectralTools.read_2col_spectrum(df)
         if "axis" in kwargs:
             if kwargs["axis"] == 'y':
@@ -551,7 +551,6 @@ class spectralSynthesizer( object ):
         self.computeHessian(minimum)
         self.computeS(minimum)
         self.covariance = 2*self.Hessian.getI()*(minimum.S/(self.countPoints(minimum)-minimum.n_dims))
-        print asdf
         return self.covariance
 
     def marquardt(self, chisq):
@@ -739,9 +738,9 @@ class spectralSynthesizer( object ):
         chiSquaredLogFile.close()
         self.saveFigures(initial_guess, outfile=outfile)
         #self.saveFigures(best_coords, outfile=outfile+'_B=0')
-        covariance = self.computeCovariance(initial_guess)
+        #covariance = self.computeCovariance(initial_guess)
 
-        return initial_guess, covariance
+        return initial_guess#, covariance
 
     def zoomIn(self, gridPoints):
         order = numpy.argsort(gridPoints)
