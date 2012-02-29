@@ -11,10 +11,13 @@ import time
 def write_parfile(filename, **kwargs):
 
     df = open(filename, 'w')
-    labels = {'terminal':'x11', 'strong':1, 'atmosphere':1, 'molecules':2, 'lines':1, 'damping':1, 'freeform':0,
-    'flux/int':0, 'plot':2, 'obspectrum':5}
-    file_labels = {'summary_out':'summary.out', 'standard_out':'out1', 'smoothed_out':'smoothed.out', 'lines_in':'linelist.input',
-    'stronglines_in':'stronglines.input', 'model_in':'model.md', 'observed_in':'observed.dat'}
+    labels = {'terminal':'x11', 'strong':1, 'atmosphere':1, 'molecules':2,
+            'lines':1, 'damping':1, 'freeform':0,
+            'flux/int':0, 'plot':2, 'obspectrum':5}
+    file_labels = {'summary_out':'summary.out', 'standard_out':'out1',
+            'smoothed_out':'smoothed.out', 'lines_in':'linelist.input',
+            'stronglines_in':'stronglines.input', 'model_in':'model.md',
+            'observed_in':'observed.dat'}
     for l in labels:
         if l in kwargs:
             labels[l] = kwargs[l]
@@ -31,9 +34,11 @@ def write_parfile(filename, **kwargs):
         df.write(l+'        '+str(labels[l])+'\n')
 
     df.write('synlimits\n')
-    df.write('               '+str(kwargs["wl_start"])+' '+str(kwargs["wl_stop"])+' 0.02 1.00\n')
+    df.write('               '+str(kwargs["wl_start"])+' '
+            +str(kwargs["wl_stop"])+' 0.02 1.00\n')
     df.write('plotpars       1\n')
-    df.write('               '+str(kwargs["wl_start"])+' '+str(kwargs["wl_stop"])+' 0.02 1.00\n')
+    df.write('               '+str(kwargs["wl_start"])+' '
+            +str(kwargs["wl_stop"])+' 0.02 1.00\n')
     df.write('               0.00 0.000 0.000 1.00\n')
     df.write('               g 0.150 0.00 0.00 0.00 0.00\n')
     
@@ -62,7 +67,8 @@ class zeemanTransition( object ):
         self.m_low = m_low
 
     def __eq__(self, other):
-        return ( (self.wavelength == other.wavelength) & (self.m_up == other.m_up) & (self.m_low == other.m_low) )
+        return ( (self.wavelength == other.wavelength) &
+                (self.m_up == other.m_up) & (self.m_low == other.m_low) )
 
 class spectral_Line( object ):
     def __init__(self,wl, species, EP, loggf, **kwargs):
@@ -120,7 +126,8 @@ class spectral_Line( object ):
         for transition in self.pi_transitions:
             if (transition.weight_perp > 0):
                 wl.append(transition.wavelength)
-                lgf.append(numpy.log10(transition.weight_perp*10.0**(self.loggf)))
+                lgf.append(numpy.log10(transition.weight_perp
+                    *10.0**(self.loggf)))
         self.zeeman["pi"] = [numpy.array(wl), numpy.array(lgf)]
 
         wl = []
@@ -128,7 +135,8 @@ class spectral_Line( object ):
         for transition in self.lcp_transitions:
             if (transition.weight_para > 0):
                 wl.append(transition.wavelength)
-                lgf.append(numpy.log10(transition.weight_para*10.0**(self.loggf)))
+                lgf.append(numpy.log10(transition.weight_para
+                    *10.0**(self.loggf)))
         self.zeeman["lcp"] = [numpy.array(wl), numpy.array(lgf)]
 
         wl = []
@@ -136,58 +144,13 @@ class spectral_Line( object ):
         for transition in self.rcp_transitions:
             if (transition.weight_para > 0):
                 wl.append(transition.wavelength)
-                lgf.append(numpy.log10(transition.weight_para*10.0**(self.loggf)))
+                lgf.append(numpy.log10(transition.weight_para
+                    *10.0**(self.loggf)))
         self.zeeman["rcp"] = [numpy.array(wl), numpy.array(lgf)]
 
-        '''
-        bohr_magneton = 5.78838176e-5           # eV*T^-1
-        hc = 12400                              # eV*Angstroems
-        eff_wl = []
-        eff_loggf = []
-        weights = []
-        for i in [-1, 0, 1]:
-            eff_wl.append(hc/(hc/self.wl+ i*self.geff*bohr_magneton*B))
-            eff_loggf.append(numpy.log10(10.0**self.loggf/3.0))
-        print 'Species = '+str(self.species)+', EP = '+str(self.EP)+', wl:'+str(self.wl)+'  effective lande g factor :'+str(self.geff) 
-        self.zeeman["geff"] = [numpy.array(eff_wl), numpy.array(eff_loggf)]
-        if "mu" in kwargs:
-            mus = kwargs["mu"]
-            for m in mus.keys():
-                mu = mus[m]
-                mu_wavelengths = []
-                mu_loggfs = []
-                lin_wavelengths = []
-                rcp_wavelengths = []
-                lcp_wavelengths = []
-                lin_loggfs = []
-                rcp_loggfs = []
-                lcp_loggfs = []
-                for transition in self.transitions:
-                    if ( ( (transition.weight_perp >0 )& (mu > 0.0) ) | ( (transition.weight_para > 0) & (mu < 3.14159) )):
-                        mu_wavelengths.append(transition.wavelength)
-                        lin_loggf = 0.0
-                        cp_loggf = 0.0
-                        if transition.weight_perp*numpy.sin(numpy.radians(mu)) > 0:
-                            lin_loggf += 10.0**(self.loggf)*transition.weight_perp*numpy.sin(mu)**2.0
-                            lin_wavelengths.append(transition.wavelength)
-                            lin_loggfs.append(numpy.log10(lin_loggf))
-                        if transition.weight_para*numpy.cos(numpy.radians(mu)) > 0:
-                            cp_loggf += 10.0**(self.loggf)*transition.weight_para*numpy.cos(mu)**2.0
-                            if transition.m_up > transition.m_low:
-                                rcp_wavelengths.append(transition.wavelength)
-                                rcp_loggfs.append(numpy.log10(cp_loggf))
-                            else:
-                                lcp_wavelengths.append(transition.wavelength)
-                                lcp_loggfs.append(numpy.log10(cp_loggf))
-                        mu_loggfs.append(numpy.log10(lin_loggf+cp_loggf))
-                   
-                self.zeeman['MU_'+str(m)] = [numpy.array(mu_wavelengths), numpy.array(mu_loggfs)]
-                self.linpol['MU_'+str(m)] = [numpy.array(lin_wavelengths), numpy.array(lin_loggfs)]
-                self.lhcpol['MU_'+str(m)] = [numpy.array(lcp_wavelengths), numpy.array(lcp_loggfs)]
-                self.rhcpol['MU_'+str(m)] = [numpy.array(rcp_wavelengths), numpy.array(rcp_loggfs)]
-        '''
-
-    def compute_zeeman_transitions(self, B, **kwargs):    # Computes the splitting associated with the Zeeman effect
+    def compute_zeeman_transitions(self, B, **kwargs):
+        # Computes the splitting associated with the Zeeman effect
+        
         bohr_magneton = 5.78838176e-5           # eV*T^-1
         hc = 12400                              # eV*Angstroems
         lower_energies = {}
@@ -207,82 +170,95 @@ class spectral_Line( object ):
         delta_J = self.upper.J - self.lower.J
         J1 = self.lower.J
 
-        self.geff = 0.5* (self.lower.g+self.upper.g) + 0.25*(self.lower.g - self.upper.g)*(self.lower.J*(self.lower.J+1)
-        - self.upper.J*(self.upper.J+1.0))
+        self.geff = 0.5* (self.lower.g+self.upper.g) + 
+              0.25*(self.lower.g-self.upper.g)*(self.lower.J*(self.lower.J+1) -
+              self.upper.J*(self.upper.J+1.0))
 
         for mj in lower_energies.keys():
             if (delta_J == 0.0):
-                if upper_energies.has_key(mj+1.0):    # delta_Mj = +1 sigma component
+                if upper_energies.has_key(mj+1.0):  # delta_Mj = +1 sigma comp
                     weight = (J1-mj)*(J1+mj+1.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj+1, mj))
-                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj+1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj+1, mj))
+                    rcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj+1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
-                if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
+                if upper_energies.has_key(mj):    # delta_Mj = 0 Pi component
                     weight= mj**2.0
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
-                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj, mj))
+                    pi_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj, mj))
                     total_weight += weight
-                if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
+                if upper_energies.has_key(mj-1.0): # delta_Mj = -1 sigma comp
                     weight = (J1+mj)*(J1-mj+1.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj-1, mj))
-                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj-1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj-1, mj))
+                    lcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj-1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
             elif (delta_J == 1.0):
-                if upper_energies.has_key(mj+1.0):    # delta_Mj = +1 sigma component
+                if upper_energies.has_key(mj+1.0): # delta_Mj = +1 sigma comp
                     weight = (J1+mj+1.0)*(J1+mj+2.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj+1, mj))
-                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj+1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj+1, mj))
+                    rcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj+1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
-                if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
+                if upper_energies.has_key(mj):  # delta_Mj = 0 Pi component
                     weight= (J1+1.0)**2.0 - mj**2.0
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
-                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj, mj))
+                    pi_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj,mj))
                     total_weight += weight
-                if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
+                if upper_energies.has_key(mj-1.0): # delta_Mj = -1 sigma comp
                     weight = (J1-mj+1.0)*(J1-mj+2.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj-1, mj))
-                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj-1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj-1, mj))
+                    lcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj-1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
             elif (delta_J == -1.0):
-                if upper_energies.has_key(mj+1.0):    # delta_Mj = +1 sigma component
+                if upper_energies.has_key(mj+1.0): # delta_Mj = +1 sigma comp
                     weight = (J1-mj)*(J1-mj-1.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj+1, mj))
-                    rcp_transitions.append(zeemanTransition(hc/(upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj+1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj+1, mj))
+                    rcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj+1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj+1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
-                if upper_energies.has_key(mj):        # delta_Mj = 0 Pi component
+                if upper_energies.has_key(mj):   # delta_Mj = 0 Pi component
                     weight= J1**2.0 - mj**2.0
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
-                    pi_transitions.append(zeemanTransition(hc/(upper_energies[mj]-lower_energies[mj]), 0.0, weight, mj,
-                    mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj, mj))
+                    pi_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj]-lower_energies[mj]), 0.0, weight,
+                        mj, mj))
                     total_weight += weight
-                if upper_energies.has_key(mj-1.0):    # delta_Mj = -1 sigma component
+                if upper_energies.has_key(mj-1.0): # delta_Mj = -1 sigma comp
                     weight = (J1+mj)*(J1+mj-1.0)
-                    transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    weight/4.0, mj-1, mj))
-                    lcp_transitions.append(zeemanTransition(hc/(upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
-                    0.0, mj-1, mj))
+                    transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        weight/4.0, mj-1, mj))
+                    lcp_transitions.append(zeemanTransition(hc/
+                        (upper_energies[mj-1]-lower_energies[mj]), weight/2.0,
+                        0.0, mj-1, mj))
                     total_weight += weight/2.0
-                    #total_weight += 3.0*weight/4.0
                     
         for transition in transitions:
             transition.weight_para /= (total_weight/2.0)
@@ -313,8 +289,9 @@ class spectral_Line( object ):
                     if ( ("zeeman" in kwargs) & (self.DissE == -99.0) ):
                         if (kwargs["zeeman"] == 'straight'):
                             for i in range(len(self.zeeman["pi"][0])):
-                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["pi"][0][i],
-                                self.species,self.EP,self.zeeman["pi"][1][i]))
+                                out.write('%10.3f%10s%10.3f%10.3f' %
+                                  (self.zeeman["pi"][0][i],
+                                  self.species,self.EP,self.zeeman["pi"][1][i]))
                                 if self.VdW == 0:
                                     out.write('%20s%10.3f\n'% (' ',0.0))
                                 else:
