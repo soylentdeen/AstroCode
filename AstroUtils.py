@@ -21,11 +21,13 @@ def parse_config(filename, defaults=None):
         
         Attempts to convert the values to int, float, boolean then string.
         
+
+        Borrowed from Neil Crighton
         """
     if defaults is None:
-        cfg = adict()
+        cfg = dict()
     else:
-        cfg = adict(**defaults)
+        cfg = dict(**defaults)
     fh = open(filename)
     for row in fh:
         if not row.strip() or row.lstrip().startswith('#'):

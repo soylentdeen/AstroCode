@@ -3,7 +3,7 @@ import SEDTools
 import scipy
 import numpy
 import scipy.integrate
-import Gnuplot
+#import Gnuplot
 import pickle
 import time
 
@@ -170,9 +170,9 @@ class spectral_Line( object ):
         delta_J = self.upper.J - self.lower.J
         J1 = self.lower.J
 
-        self.geff = 0.5* (self.lower.g+self.upper.g) + 
-              0.25*(self.lower.g-self.upper.g)*(self.lower.J*(self.lower.J+1) -
-              self.upper.J*(self.upper.J+1.0))
+        self.geff = (0.5*(self.lower.g+self.upper.g)  
+              +0.25*(self.lower.g-self.upper.g)*(self.lower.J*(self.lower.J+1)-
+              self.upper.J*(self.upper.J+1.0)))
 
         for mj in lower_energies.keys():
             if (delta_J == 0.0):

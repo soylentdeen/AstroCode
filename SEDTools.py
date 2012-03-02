@@ -2,7 +2,7 @@ import numpy
 import scipy
 import pyfits
 import scipy.optimize as optimize
-import Gnuplot
+#import Gnuplot
 
 '''
 spectralSlope - finds the spectral slope of an input spectrum.
