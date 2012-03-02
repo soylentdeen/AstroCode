@@ -280,74 +280,47 @@ class spectral_Line( object ):
         if "out" in kwargs:
             out = kwargs["out"]
             if self.DissE > 0:
-                out.write('%10.3f%10.5f%10.3f%10.3f%20.3f\n' % (self.wl, self.species,self.EP, self.loggf, self.DissE))
+                out.write('%10.3f%10.5f%10.3f%10.3f%20.3f\n' % (self.wl,
+                    self.species,self.EP, self.loggf, self.DissE))
             elif kwargs["mode"].upper() == 'FULL':
                 if ( (self.EP < 20.0) & (self.species % 1 <= 0.2) ):
-                    out.write('%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f\n' % (self.wl,self.species,self.EP,self.loggf, self.Jlow, self.Jup,self.glow,self.gup,self.geff,self.VdW))
+                    out.write(
+          '%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f%10.3f\n' %
+          (self.wl,self.species,self.EP,self.loggf, self.Jlow, self.Jup,
+          self.glow,self.gup,self.geff,self.VdW))
             elif kwargs["mode"].upper() == 'MOOG':
                 if ( (self.EP < 20.0) & (self.species % 1 <= 0.2) ):
-                    if ( ("zeeman" in kwargs) & (self.DissE == -99.0) ):
-                        if (kwargs["zeeman"] == 'straight'):
-                            for i in range(len(self.zeeman["pi"][0])):
-                                out.write('%10.3f%10s%10.3f%10.3f' %
+                    if ( self.DissE == -99.0 ):
+                        for i in range(len(self.zeeman["pi"][0])):
+                            out.write('%10.3f%10s%10.3f%10.3f' %
                                   (self.zeeman["pi"][0][i],
                                   self.species,self.EP,self.zeeman["pi"][1][i]))
-                                if self.VdW == 0:
-                                    out.write('%20s%10.3f\n'% (' ',0.0))
-                                else:
-                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ', 0.0))
-                            for i in range(len(self.zeeman["lcp"][0])):
-                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["lcp"][0][i],
+                            if self.VdW == 0:
+                                out.write('%20s%10.3f\n'% (' ',0.0))
+                            else:
+                                out.write('%10.3f%10s%10.3f\n' %
+                                        (self.VdW, ' ', 0.0))
+                        for i in range(len(self.zeeman["lcp"][0])):
+                            out.write('%10.3f%10s%10.3f%10.3f' %
+                                (self.zeeman["lcp"][0][i],
                                 self.species,self.EP,self.zeeman["lcp"][1][i]))
-                                if self.VdW == 0:
-                                    out.write('%20s%10.3f\n'% (' ',-1.0))
-                                else:
-                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ',-1.0))
-                            for i in range(len(self.zeeman["rcp"][0])):
-                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman["rcp"][0][i],
+                            if self.VdW == 0:
+                                out.write('%20s%10.3f\n'% (' ',-1.0))
+                            else:
+                                out.write('%10.3f%10s%10.3f\n' %
+                                        (self.VdW, ' ',-1.0))
+                        for i in range(len(self.zeeman["rcp"][0])):
+                            out.write('%10.3f%10s%10.3f%10.3f' %
+                                (self.zeeman["rcp"][0][i],
                                 self.species,self.EP,self.zeeman["rcp"][1][i]))
-                                if self.VdW == 0:
-                                    out.write('%20s%10.3f\n'% (' ',1.0))
-                                else:
-                                    out.write('%10.3f%10s%10.3f\n' % (self.VdW, ' ', 1.0))
-                        else:
-                            order = numpy.argsort(self.zeeman[kwargs["zeeman"]][0])
-                            for i in range(len(order)):
-                                out.write('%10.3f%10s%10.3f%10.3f' % (self.zeeman[kwargs["zeeman"]][0][order[i]],
-                                self.species,self.EP,self.zeeman[kwargs["zeeman"]][1][order[i]]))
-                                if self.VdW == 0:
-                                    out.write('\n')
-                                else:
-                                    out.write('%10.3f\n' % self.VdW)
-                    elif ( ("linpol" in kwargs) & (self.DissE == -99.0) ):
-                        order = numpy.argsort(self.linpol[kwargs["linpol"]][0])
-                        for i in range(len(order)):
-                            out.write('%10.3f%10s%10.3f%10.3f' % (self.linpol[kwargs["linpol"]][0][order[i]],
-                            self.species,self.EP,self.linpol[kwargs["linpol"]][1][order[i]]))
                             if self.VdW == 0:
-                                out.write('\n')
+                                out.write('%20s%10.3f\n'% (' ',1.0))
                             else:
-                                out.write('%10.3f\n' % self.VdW)
-                    elif ( ("lhcpol" in kwargs) & (self.DissE == -99.0) ):
-                        order = numpy.argsort(self.lhcpol[kwargs["lhcpol"]][0])
-                        for i in range(len(order)):
-                            out.write('%10.3f%10s%10.3f%10.3f' % (self.lhcpol[kwargs["lhcpol"]][0][order[i]],
-                            self.species,self.EP,self.lhcpol[kwargs["lhcpol"]][1][order[i]]))
-                            if self.VdW == 0:
-                                out.write('\n')
-                            else:
-                                out.write('%10.3f\n' % self.VdW)
-                    elif ( ("rhcpol" in kwargs) & (self.DissE == -99.0) ):
-                        order = numpy.argsort(self.rhcpol[kwargs["rhcpol"]][0])
-                        for i in range(len(order)):
-                            out.write('%10.3f%10s%10.3f%10.3f' % (self.rhcpol[kwargs["rhcpol"]][0][order[i]],
-                            self.species,self.EP,self.rhcpol[kwargs["rhcpol"]][1][order[i]]))
-                            if self.VdW == 0:
-                                out.write('\n')
-                            else:
-                                out.write('%10.3f\n' % self.VdW)
+                                out.write('%10.3f%10s%10.3f\n' %
+                                        (self.VdW, ' ', 1.0))
                     else:
-                        out.write('%10.3f%10.3f%10.3f%10.3f' % (self.wl, self.species, self.EP,self.loggf))
+                        out.write('%10.3f%10.3f%10.3f%10.3f' %
+                                (self.wl, self.species, self.EP,self.loggf))
                         if self.VdW != 0.0:
                             out.write('%10.3f' % self.VdW)
                         out.write('\n')
@@ -382,11 +355,14 @@ class spectral_Line( object ):
         if isinstance(other, float):
             return self.wl == other
         else:
-            distance = ((self.wl - other.wl)**2.0 + (self.species - other.species)**2.0 + (self.EP - other.EP)**2.0)**0.5
+            distance = ((self.wl - other.wl)**2.0 +
+                    (self.species - other.species)**2.0 +
+                    (self.EP - other.EP)**2.0)**0.5
             if other.Jlow == -1:
                 return ( distance < 0.01 )
             else:
-                return ( (distance < 0.01) & (self.Jup == other.Jup) & (self.Jlow == other.Jlow) )
+                return ( (distance < 0.01) & (self.Jup == other.Jup)
+                        & (self.Jlow == other.Jlow) )
                 
 
 
@@ -397,9 +373,11 @@ class Observed_Level( object ):
         if g != 99:
             self.g = g           # Lande g factor for the level
         else:
-            self.g = 1.0         # Assume that the g-factor is 1.0 if we don't have a measured/calcuated value
+            self.g = 1.0         # Assume that the g-factor is 1.0 if
+                                 # we don't have a measured/calcuated value
 
-        self.mj = numpy.arange(self.J, (-1.0*self.J)-0.5, step = -1) # Calculate the Mj sublevels
+        # Calculate the Mj sublevels
+        self.mj = numpy.arange(self.J, (-1.0*self.J)-0.5, step = -1)
 
 class Strong_Line( object ):
     def __init__(self, wl_o, zeeman, species, ep, loggf, VdW):
