@@ -47,7 +47,7 @@ def write_parfile(filename, **kwargs):
 class periodicTable( object ):
     def __init__(self):
         self.Zsymbol_table = {}
-        df = open('/home/deen/Code/python/StarFormation/AstroCode/MOOGConstants.dat', 'r')
+        df = open('/home/deen/Code/Python/AstroCode/MOOGConstants.dat', 'r')
         for line in df.readlines():
             l = line.split('-')
             self.Zsymbol_table[int(l[0])] = l[1].strip()
