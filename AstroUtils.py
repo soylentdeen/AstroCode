@@ -2,7 +2,7 @@ import os
 import glob
 
 def parse_config(filename, defaults=None):
-        """ Read options for a configuration file.
+    """ Read options for a configuration file.
         
         filename    the configuration filename
         defaults    a dictionary of allowed options with default values.
@@ -22,8 +22,8 @@ def parse_config(filename, defaults=None):
         Attempts to convert the values to int, float, boolean then string.
         
 
-        Borrowed from Neil Crighton
-        """
+       Borrowed from Neil Crighton
+    """
     if defaults is None:
         cfg = dict()
     else:
