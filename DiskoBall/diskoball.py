@@ -1,6 +1,7 @@
 import numpy
 import scipy
 import matplotlib.pyplot as pyplot
+from matplotlib.ticker import FormatStrFormatter
 
 class Angle:
     def __init__(self, line):
@@ -18,9 +19,9 @@ pi = numpy.pi
 total_surface_area = 4.0*pi
 cell_area = total_surface_area/ncells
 
-dfI = '/home/deen/Data/MoogStokes/Verification_Data/testline/Belo.spectrum_I'
-dfContinuum = '/home/deen/Data/MoogStokes/Verification_Data/testline/Belo.continuum'
-dfAngles = '/home/deen/Data/MoogStokes/Verification_Data/testline/Belo.angles'
+dfI = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.spectrum_I'
+dfContinuum = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.continuum'
+dfAngles = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.angles'
 dfMoog = '/home/deen/Data/MoogStokes/Verification_Data/testline/flux.moog'
 
 Angles = open(dfAngles, 'r')
@@ -74,6 +75,7 @@ C = numpy.array(C)
 C = C.transpose()
 
 fig = pyplot.figure(1)
+fig.clear()
 ax = fig.add_subplot(1,1,1)
 
 r2d = 180.0/pi
@@ -87,15 +89,12 @@ T_I = numpy.matrix([[1.0, 0.0, 0.0],
         [0.0, -numpy.sin(inclination), numpy.cos(inclination)]])
 
 emergent_vector = numpy.matrix([1.0, 0.0, 0.0])
+mus = []
+limb_darkenings = []
+projected_areas = []
+weights = []
 
 for junk in zip(I, C, ang_info):
-    """
-    ax.clear()
-    ax.plot(wl, junk[0]/junk[1])
-    ax.set_ybound(1.0, 0.4)
-    fig.show()
-    raw_input()
-    #"""
     azimuth = junk[2].az
     n_az_steps = int(azimuth[2]*r2d-azimuth[1]*r2d)
     azs = azimuth[1]+(numpy.arange(n_az_steps)+0.5)*(azimuth[2]-azimuth[1])/n_az_steps
@@ -125,8 +124,33 @@ for junk in zip(I, C, ang_info):
                 total_weight += weight
                 final_spectrum = final_spectrum + weight*junk[0]/junk[1]
 
+                mus.append(mu)
+                projected_areas.append(projected_area*r2d*r2d)
+                limb_darkenings.append(limb_darkening)
+                weights.append(weight)
+
+mus = numpy.arccos(numpy.array(mus))*r2d
+projected_areas = numpy.array(projected_areas)
+limb_darkenings = numpy.array(limb_darkenings)
+weights = numpy.array(weights)
+
 final_spectrum /= total_weight
 
-ax.plot(wl, final_spectrum)
-ax.plot(moog_wl, numpy.array(moog_fl))
-fig.show()
+majorFormatter = FormatStrFormatter('%10.1f')
+
+ax.plot(wl, final_spectrum, label='MoogStokes', color = 'r')
+ax.plot(moog_wl, numpy.array(moog_fl), label = 'MoogScalar', color='b')
+ax.xaxis.set_major_formatter(majorFormatter)
+ax.set_xbound(11990.0, 11993)
+ax.set_ybound(1.0, 0.4)
+ax.set_xlabel(r'Wavelength $\left(\AA\right)$')
+ax.set_ylabel(r'$\frac{I}{C}$')
+ax.set_title(r'DELO vs. Contribution Function Comparison : Full Disk')
+ax.legend(loc=3)
+fig.savefig('Diskint.png')
+
+f1 = pyplot.figure(1)
+f1.clear()
+ax1 = f1.add_subplot(1,1,1)
+ax1.scatter(mus, projected_areas, marker=',')
+f1.savefig('ld.png')
