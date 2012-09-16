@@ -2,6 +2,8 @@ import numpy
 import scipy
 import matplotlib.pyplot as pyplot
 from matplotlib.ticker import FormatStrFormatter
+import SpectralTools
+import scipy.interpolate
 
 class Angle:
     def __init__(self, line):
@@ -19,10 +21,10 @@ pi = numpy.pi
 total_surface_area = 4.0*pi
 cell_area = total_surface_area/ncells
 
-dfI = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.spectrum_I'
-dfContinuum = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.continuum'
-dfAngles = '/home/deen/Data/MoogStokes/Verification_Data/testline/delo.angles'
-dfMoog = '/home/deen/Data/MoogStokes/Verification_Data/testline/flux.moog'
+dfI = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.spectrum_I'
+dfContinuum = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.continuum'
+dfAngles = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.angles'
+dfMoog = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.int80.0'
 
 Angles = open(dfAngles, 'r')
 StokesI = open(dfI, 'r')
@@ -89,10 +91,6 @@ T_I = numpy.matrix([[1.0, 0.0, 0.0],
         [0.0, -numpy.sin(inclination), numpy.cos(inclination)]])
 
 emergent_vector = numpy.matrix([1.0, 0.0, 0.0])
-mus = []
-limb_darkenings = []
-projected_areas = []
-weights = []
 
 for junk in zip(I, C, ang_info):
     azimuth = junk[2].az
@@ -103,13 +101,13 @@ for junk in zip(I, C, ang_info):
     longitude = junk[2].longitude
     dphi = longitude[1]
     n_phi_steps = int(dphi*r2d)
-    phis = longitude[0]-dphi/2.0+(numpy.arange(n_phi_steps)+0.5)*dphi/n_phi_steps
+    phis=longitude[0]-dphi/2.0+(numpy.arange(n_phi_steps)+0.5)*dphi/n_phi_steps
     for az in zip(azs, az1, az2):
         T_rho = numpy.matrix([[0.0, 0.0, 1.0],
                 [-numpy.cos(az[0]), numpy.sin(az[0]), 0.0],
                 [numpy.sin(az[0]), numpy.cos(az[0]), 0.0]])
         daz = numpy.sin(az[2])-numpy.sin(az[1])
-        area = daz*dphi
+        area = daz*dphi/n_phi_steps
         for phi in phis:
             T_eta = numpy.matrix([
                     [numpy.cos(phi), -numpy.sin(phi), 0.0],
@@ -124,15 +122,6 @@ for junk in zip(I, C, ang_info):
                 total_weight += weight
                 final_spectrum = final_spectrum + weight*junk[0]/junk[1]
 
-                mus.append(mu)
-                projected_areas.append(projected_area*r2d*r2d)
-                limb_darkenings.append(limb_darkening)
-                weights.append(weight)
-
-mus = numpy.arccos(numpy.array(mus))*r2d
-projected_areas = numpy.array(projected_areas)
-limb_darkenings = numpy.array(limb_darkenings)
-weights = numpy.array(weights)
 
 final_spectrum /= total_weight
 
@@ -149,8 +138,11 @@ ax.set_title(r'DELO vs. Contribution Function Comparison : Full Disk')
 ax.legend(loc=3)
 fig.savefig('Diskint.png')
 
-f1 = pyplot.figure(1)
-f1.clear()
-ax1 = f1.add_subplot(1,1,1)
-ax1.scatter(mus, projected_areas, marker=',')
-f1.savefig('ld.png')
+wave = numpy.arange(wl[0], wl[-1], step=0.001)
+fstokes = scipy.interpolate.UnivariateSpline(wl, final_spectrum, s=0)
+fscalar = scipy.interpolate.UnivariateSpline(moog_wl, numpy.array(moog_fl), s=0)
+flux_stokes = fstokes(wave)
+flux_scalar = fscalar(wave)
+
+SpectralTools.write_2col_spectrum('T50G5.delo.80.dat', wave, flux_stokes)
+SpectralTools.write_2col_spectrum('T50G5.moog.80.dat', wave, flux_scalar)
