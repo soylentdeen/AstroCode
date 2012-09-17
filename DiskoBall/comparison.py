@@ -15,46 +15,35 @@ class Angle:
         self.chi = float(l[7])
         self.mu = float(l[8])
 
-class Diskoball:
-    def __init__(self, datadir, basename):
-        self.datadir = datadir
-        self.basename = basename
-        self.dfI = self.datadir+self.basename+'.spectrum_I'
-        self.dfQ = self.datadir+self.basename+'.spectrum_Q'
-        self.dfU = self.datadir+self.basename+'.spectrum_U'
-        self.dfV = self.datadir+self.basename+'.spectrum_V'
-        self.dfCont = self.datadir+self.basename+'.continuum'
-        self.dfAngles = self.datadir+self.basename+'.angles'
+nrings = 23
+ncells = 695
+pi = numpy.pi
+total_surface_area = 4.0*pi
+cell_area = total_surface_area/ncells
 
-        Angles = open(self.dfAngles, 'r')
-        StokesI = open(self.dfI, 'r')
-        StokesQ = open(self.dfQ, 'r')
-        StokesU = open(self.dfU, 'r')
-        StokesV = open(self.dfV, 'r')
-        Continuum = open(self.dfCont, 'r')
+dfI = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.spectrum_I'
+dfContinuum = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.continuum'
+dfAngles = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.delo80.0.angles'
+dfMoog = '/home/deen/Data/MoogStokes/Verification_Data/testline/T50G5.int80.0'
 
-        linecouner = 0
-        self.ang_info = []
-        for line in Angles:
-            if linecounter == 0:
-                l = line.split()
-                self.ncells = int(l[0])
-                self.nrings = int(l[1])
-                self.inclination = float(l[2])
-                self.PA = float(l[3])
-                self.cell_area = 4.0*3.1415926/ncells
-                linecounter +=1
-            else:
-                self.ang_info.append(Angle(line))
+Angles = open(dfAngles, 'r')
+StokesI = open(dfI, 'r')
+Continuum = open(dfContinuum, 'r')
+Moog = open(dfMoog, 'r')
 
+moog_wl = []
+moog_fl = []
 
-        wl = []
-        I = []
-        Q = []
-        U = []
-        V = []
-        C = []
+for line in Moog:
+    l = line.split()
+    if len(l) == 2:
+        moog_wl.append(float(l[0]))
+        moog_fl.append(float(l[1]))
 
+ang_info = []
+
+for line in Angles:
+    ang_info.append(Angle(line))
 
 wl = []
 I = []
