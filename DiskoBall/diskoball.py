@@ -54,38 +54,90 @@ class Diskoball:
         U = []
         V = []
         C = []
+        
+        for line in StokesI:
+            l = line.split()
+            wl.append(float(l[0]))
+            a = []
+            for fluxes in l[1:]:
+                a.append(float(fluxes))
+            I.append(a)
+
+        for line in StokesQ:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                a.append(float(fluxes))
+            Q.append(a)
+
+        for line in StokesU:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                a.append(float(fluxes))
+            U.append(a)
+
+        for line in StokesV:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                a.append(float(fluxes))
+            V.append(a)
+
+        for line in Continuum:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                a.append(float(fluxes))
+            C.append(a)
+        
+        self.wl = numpy.array(wl)
+        I = numpy.array(I)
+        Q = numpy.array(Q)
+        U = numpy.array(U)
+        V = numpy.array(V)
+        C = numpy.array(V)
+        self.I = I.transpose()
+        self.Q = Q.transpose()
+        self.U = U.transpose()
+        self.V = V.transpose()
+        self.C = C.transpose()
+
+        wave = numpy.mean(self.wl)
+        if ((1.0/(wave/10000.0)) < 2.4):
+            self.alpha = -0.023 + 0.292/(wave/10000.0)
+        else:
+            self.alpha = -0.507 + 0.441/(wave/10000.0)
 
 
-wl = []
-I = []
-C = []
+    def interpolate(self, stepsize):
+        wave = numpy.arange(wl[0], wl[-1], step=0.001)
+        fI = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_I, s=0)
+        fQ = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_Q, s=0)
+        fU = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_U, s=0)
+        fV = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_V, s=0)
+        self.flux_I = fI(wave)
+        self.flux_Q = fQ(wave)
+        self.flux_U = fU(wave)
+        self.flux_V = fV(wave)
 
-for line in StokesI:
-    l = line.split()
-    wl.append(float(l[0]))
-    a = []
-    for fluxes in l[1:]:
-        a.append(float(fluxes))
-    I.append(a)
 
-wave = numpy.mean(wl)
-if ((1.0/(wave/10000.0)) < 2.4):
-   alpha = -0.023 + 0.292/(wave/10000.0)
-else:
-   alpha = -0.507 + 0.441/(wave/10000.0)
+    def disko(self):
+        final_I = numpy.zeros(len(self.wl))
+        final_Q = numpy.zeros(len(self.wl))
+        final_U = numpy.zeros(len(self.wl))
+        final_V = numpy.zeros(len(self.wl))
+        
+        total_weight = 0.0
+        T_I = numpy.matrix([[1.0, 0.0, 0.0],
+              [0.0, numpy.cos(inclination), numpy.sin(inclination)],
+              [0.0, -numpy.sin(inclination), numpy.cos(inclination)]])
 
-I = numpy.array(I)
-I = I.transpose()
+        emergent_vector = numpy.matrix([1.0, 0.0, 0.0])
 
-for line in Continuum:
-    l = line.split()
-    a = []
-    for fluxes in l[1:]:
-        a.append(float(fluxes))
-    C.append(a)
-
-C = numpy.array(C)
-C = C.transpose()
+SpectralTools.write_2col_spectrum('T50G5.delo.80.dat', wave, flux_stokes)
+SpectralTools.write_2col_spectrum('T50G5.moog.80.dat', wave, flux_scalar)
+        wave = 
 
 fig = pyplot.figure(1)
 fig.clear()
@@ -97,11 +149,6 @@ final_spectrum = numpy.zeros(len(wl))
 total_weight = 0.0
 
 inclination = pi/2.0
-T_I = numpy.matrix([[1.0, 0.0, 0.0],
-        [0.0, numpy.cos(inclination), numpy.sin(inclination)],
-        [0.0, -numpy.sin(inclination), numpy.cos(inclination)]])
-
-emergent_vector = numpy.matrix([1.0, 0.0, 0.0])
 
 for junk in zip(I, C, ang_info):
     azimuth = junk[2].az
@@ -149,11 +196,3 @@ ax.set_title(r'DELO vs. Contribution Function Comparison : Full Disk')
 ax.legend(loc=3)
 fig.savefig('Diskint.png')
 
-wave = numpy.arange(wl[0], wl[-1], step=0.001)
-fstokes = scipy.interpolate.UnivariateSpline(wl, final_spectrum, s=0)
-fscalar = scipy.interpolate.UnivariateSpline(moog_wl, numpy.array(moog_fl), s=0)
-flux_stokes = fstokes(wave)
-flux_scalar = fscalar(wave)
-
-SpectralTools.write_2col_spectrum('T50G5.delo.80.dat', wave, flux_stokes)
-SpectralTools.write_2col_spectrum('T50G5.moog.80.dat', wave, flux_scalar)
