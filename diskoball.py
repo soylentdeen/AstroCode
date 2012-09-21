@@ -33,7 +33,7 @@ class Diskoball( object ):
         StokesV = open(self.dfV, 'r')
         Continuum = open(self.dfCont, 'r')
 
-        linecouner = 0
+        linecounter = 0
         self.ang_info = []
         for line in Angles:
             if linecounter == 0:
@@ -42,7 +42,7 @@ class Diskoball( object ):
                 self.nrings = int(l[1])
                 self.inclination = float(l[2])
                 self.PA = float(l[3])
-                self.cell_area = 4.0*3.1415926/ncells
+                self.cell_area = 4.0*3.1415926/self.ncells
                 linecounter +=1
             else:
                 self.ang_info.append(Angle(line))
@@ -96,7 +96,7 @@ class Diskoball( object ):
         Q = numpy.array(Q)
         U = numpy.array(U)
         V = numpy.array(V)
-        C = numpy.array(V)
+        C = numpy.array(C)
         self.I = I.transpose()
         self.Q = Q.transpose()
         self.U = U.transpose()
@@ -111,7 +111,7 @@ class Diskoball( object ):
 
 
     def interpolate(self, stepsize):
-        self.wave = numpy.arange(wl[0], wl[-1], step=0.001)
+        self.wave = numpy.arange(self.wl[0], self.wl[-1], step=stepsize)
         fI = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_I, s=0)
         fQ = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_Q, s=0)
         fU = scipy.interpolate.UnivariateSpline(self.wl, self.integrated_U, s=0)
@@ -134,25 +134,25 @@ class Diskoball( object ):
         
         total_weight = 0.0
         T_I = numpy.matrix([[1.0, 0.0, 0.0],
-              [0.0, numpy.cos(inclination), numpy.sin(inclination)],
-              [0.0, -numpy.sin(inclination), numpy.cos(inclination)]])
+              [0.0, numpy.cos(self.inclination), numpy.sin(self.inclination)],
+              [0.0, -numpy.sin(self.inclination), numpy.cos(self.inclination)]])
 
         emergent_vector = numpy.matrix([1.0, 0.0, 0.0])
 
         for tile in zip(self.I, self.Q, self.U, self.V, self.C, self.ang_info):
             azimuth = tile[5].az
             n_az_steps = int(azimuth[2]*r2d-azimuth[1]*r2d)
-            azs = azimuth[1]+numpy.arange(n_az_steps)+0.5)*(azimuth[2]-
+            azs = azimuth[1]+(numpy.arange(n_az_steps)+0.5)*(azimuth[2]-
                     azimuth[1])/n_az_steps
-            az1 = azimuth[1]+numpy.arange(n_az_steps))*(azimuth[2]-
+            az1 = azimuth[1]+(numpy.arange(n_az_steps))*(azimuth[2]-
                     azimuth[1])/n_az_steps
-            az2 = azimuth[1]+numpy.arange(n_az_steps)+1.0)*(azimuth[2]-
+            az2 = azimuth[1]+(numpy.arange(n_az_steps)+1.0)*(azimuth[2]-
                     azimuth[1])/n_az_steps
             longitude = tile[5].longitude
             dphi = longitude[1]
             n_phi_steps = int(dphi*r2d)
             phis = longitude[0]-dphi/2.0+(numpy.arange(n_phi_steps)+
-                    0.5)*dphi/nphi_steps
+                    0.5)*dphi/n_phi_steps
             for az in zip(azs, az1, az2):
                 T_rho = numpy.matrix([[0.0, 0.0, 1.0],
                         [-numpy.cos(az[0]), numpy.sin(az[0]), 0.0],
@@ -168,7 +168,7 @@ class Diskoball( object ):
                     mu = surface_vector.A[2][0]
                     if (mu > 0.00001):
                         projected_area = area*mu#/(4.0*pi)
-                        limb_darkening = (1.0-(1.0-mu**alpha))
+                        limb_darkening = (1.0-(1.0-mu**self.alpha))
                         weight = projected_area*limb_darkening
                         total_weight += weight
                         final_I = final_I + weight*tile[0]/tile[4]
