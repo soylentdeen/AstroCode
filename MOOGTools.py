@@ -154,9 +154,14 @@ class spectral_Line( object ):
         hc = 12400                              # eV*Angstroems
         lower_energies = {}
         upper_energies = {}
+
+        #Steps through all possible M_j in lower state, calculating
+        #the energy shift
         for mj in self.lower.mj:
             lower_energies[mj] = self.lower.E+mj*self.lower.g*bohr_magneton*B
 
+        #Steps through all possible M_j in upper state, calculating
+        #the energy shift
         for mj in self.upper.mj:
             upper_energies[mj] = self.upper.E+mj*self.upper.g*bohr_magneton*B
 
@@ -167,13 +172,19 @@ class spectral_Line( object ):
         rcp_weight = 0.0
         lcp_weight = 0.0
 
+        #Calculates the change in angular momentum
         delta_J = self.upper.J - self.lower.J
         J1 = self.lower.J
 
+        #Calcualtes the effective Lande g factor
         self.geff = (0.5*(self.lower.g+self.upper.g)  
               +0.25*(self.lower.g-self.upper.g)*(self.lower.J*(self.lower.J+1)-
               self.upper.J*(self.upper.J+1.0)))
 
+        #Steps through all lower energy states, applies Electric Dipole
+        #Selection Rules to determine which transitions are allowed, and
+        #calculates their weight according to the QM formulas in Condon&Shortley
+        #section 4 chapter 16
         for mj in lower_energies.keys():
             if (delta_J == 0.0):
                 if upper_energies.has_key(mj+1.0):  # delta_Mj = +1 sigma comp
@@ -233,6 +244,8 @@ class spectral_Line( object ):
                         mj-1, mj))
                     lcp_weight += weight
                     
+        #For each polarization, perform the normalizations of weights so that
+        #all transition weights within a single polarization add up to 1.0
         for transition in rcp_transitions:
             transition.weight /= rcp_weight
         for transition in pi_transitions:
@@ -261,7 +274,7 @@ class spectral_Line( object ):
                 if ( (self.EP < 20.0) & (self.species % 1 <= 0.2) ):
                     if ( self.DissE == -99.0 ):
                         for i in range(len(self.zeeman["pi"][0])):
-                            out.write('%10.3f%10s%10.3f%10.3f' %
+                            out.write('%10.4f%10s%10.3f%10.6f' %
                                   (self.zeeman["pi"][0][i],
                                   self.species,self.EP,self.zeeman["pi"][1][i]))
                             if self.VdW == 0:
@@ -270,7 +283,7 @@ class spectral_Line( object ):
                                 out.write('%10.3f%20s%10.3f\n' %
                                         (self.VdW, ' ', 0.0))
                         for i in range(len(self.zeeman["lcp"][0])):
-                            out.write('%10.3f%10s%10.3f%10.3f' %
+                            out.write('%10.4f%10s%10.3f%10.6f' %
                                 (self.zeeman["lcp"][0][i],
                                 self.species,self.EP,self.zeeman["lcp"][1][i]))
                             if self.VdW == 0:
@@ -279,7 +292,7 @@ class spectral_Line( object ):
                                 out.write('%10.3f%20s%10.3f\n' %
                                         (self.VdW, ' ',-1.0))
                         for i in range(len(self.zeeman["rcp"][0])):
-                            out.write('%10.3f%10s%10.3f%10.3f' %
+                            out.write('%10.4f%10s%10.3f%10.6f' %
                                 (self.zeeman["rcp"][0][i],
                                 self.species,self.EP,self.zeeman["rcp"][1][i]))
                             if self.VdW == 0:
@@ -288,7 +301,7 @@ class spectral_Line( object ):
                                 out.write('%10.3f%20s%10.3f\n' %
                                         (self.VdW, ' ', 1.0))
                     else:
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                        out.write('%10.3f%10.5f%10.3f%10.6f' %
                                 (self.wl, self.species, self.EP,self.loggf))
                         if self.VdW == 0.0:
                             out.write('%10s%10.3f%20.3f\n' %
@@ -296,22 +309,22 @@ class spectral_Line( object ):
                         else:
                             out.write('%10.3f%10.3f%20.3f\n' %
                                     (self.VdW, self.DissE, 1.0))
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                        out.write('%10.3f%10.5f%10.3f%10.6f' %
                                 (self.wl, self.species, self.EP,self.loggf))
                         if self.VdW == 0.0:
                             out.write('%10s%10.3f%20.3f\n' %
                                     (' ',self.DissE, 0.0))
                         else:
                             out.write('%10.3f%10.3f%20.3f\n' %
-                                    (self.VdW, self.DissE, 1.0))
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                    (self.VdW, self.DissE, 0.0))
+                        out.write('%10.3f%10.5f%10.3f%10.6f' %
                                 (self.wl, self.species, self.EP,self.loggf))
                         if self.VdW == 0.0:
                             out.write('%10s%10.3f%20.3f\n' %
                                     (' ',self.DissE, -1.0))
                         else:
                             out.write('%10.3f%10.3f%20.3f\n' %
-                                    (self.VdW, self.DissE, 1.0))
+                                    (self.VdW, self.DissE, -1.0))
         else:
             print self.species, self.wl, self.EP, self.loggf, self
 
