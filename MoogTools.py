@@ -1,6 +1,7 @@
 import scipy
 import scipy.interpolate
 import numpy
+import os
 
 
 class periodicTable( object ):
@@ -71,7 +72,7 @@ class VALD_Line( object ):
         self.lower = Observed_Level(self.J_lo, self.g_lo, self.expot_lo)
         self.upper = Observed_Level(self.J_hi, self.g_hi, self.expot_lo+12400.0/self.wl)
         self.zeeman = {}
-        self.zeeman["NOFIELD"] = [[self.wl], [self.loggf]]
+        self.zeeman["NOFIELD"] = [self.wl,self.loggf]
 
     def zeeman_splitting(self, B, **kwargs):
         self.compute_zeeman_transitions(B, **kwargs)
@@ -320,6 +321,28 @@ class VALD_Line( object ):
                         else:
                             out.write('%10.3f\n' %
                                     (self.stark))
+            elif kwargs["mode"].upper() == "MOOGSCALAR":
+                if( (self.expot_lo < 20.0) & (self.species % 1 <= 0.2)):
+                    if (self.DissE == -99.0):
+                        out.write('%10.3f%10s%10.3f%10.5f' %
+                           (self.zeeman["NOFIELD"][0],
+                           self.species,self.expot_lo,
+                           self.zeeman["NOFIELD"][1]))
+                        if self.VdW == 0:
+                            out.write('%40s'% (' '))
+                        else:
+                            out.write('%10.3f%30s' %
+                                    (self.VdW, ' '))
+                        if self.radiative == 0:
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if self.stark == 0:
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
 
 class zeemanTransition( object):
     def __init__(self, wavelength, weight, m_up, m_low):
@@ -374,8 +397,253 @@ def parse_VALD(VALD_list, strong_file, molecules, wl_start, wl_stop, Bfield):
 
     return stronglines, weaklines
 
+def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None, 
+        gravs=None, mode='gridstokes', strongLines=False, **kwargs):
+    if mode=='gridstokes':
+        fn = 'batch.gridstokes'
+        suffix = '.stokes'
+    elif mode == 'gridsyn':
+        fn = 'batch.gridsyn'
+        suffix = '.scalar'
+    elif mode == 'stokes':
+        fn = 'batch.stokes'
+        suffix = '.stokes'
+    elif mode == 'synth':
+        fn = 'batch.synth'
+        suffix = '.scalar'
 
-def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
+    outfile_name = os.path.join(stage_dir,'Parfiles', b_dir, fn)
+
+    if "OUT_DIR" in kwargs.keys():
+        output_prefix = kwargs["OUT_DIR"]
+    else:
+        output_prefix = '../../Output/'+b_dir+'/'
+
+    line_prefix = '../../Linelists/'+b_dir+'/'
+
+    labels = {'terminal':'x11',
+            'strong':1, 
+            'atmosphere':1, 
+            'molecules':2,
+            'lines':1,
+            'damping':1,
+            'freeform':0,
+            'flux/int':0}
+            #'plot':2, 
+            #'obspectrum':5}
+    file_labels = {'summary_out':'../../Output/'+b_dir+'/summary.out',
+            'standard_out':output_prefix+'out1',
+            'smoothed_out':output_prefix+'smoothed.out',
+            'atmos_dir':'/home/deen/Data/Atmospheres/MARCS/',
+            'out_dir':output_prefix,
+            'lines_in':line_prefix+prefix+'_weak_linelist'+suffix,
+            'stronglines_in':line_prefix+prefix+'_strong_linelist'+suffix}
+            #'model_in':'model.md',
+            #'observed_in':'observed.dat'}
+
+
+    for l in labels:
+        if l in kwargs:
+            labels[l] = kwargs[l]
+            
+    for fl in file_labels:
+        if fl in kwargs:
+            file_labels[fl] = kwargs[fl]
+
+    pf = open(outfile_name, 'w')
+
+    pf.write(mode+'\n')
+    for fl in file_labels:
+        pf.write(fl+'   \''+file_labels[fl]+'\'\n')
+    for l in labels:
+        pf.write(l+'    '+str(labels[l])+'\n')
+
+    pf.write('synlimits\n')
+    pf.write('               '+str(wl_start)+' '
+             +str(wl_stop)+' 0.01 1.50\n')
+    pf.write('plotpars       1\n')
+    pf.write('               '+str(wl_start)+' '
+             +str(wl_stop)+' 0.02 1.00\n')
+    pf.write('               0.00 0.000 0.000 1.00\n')
+    pf.write('               g 0.150 0.00 0.00 0.00 0.00\n')
+
+    if ( (mode=='gridstokes') | (mode=='gridsyn')):
+        run_number = 1
+
+        if (not temps):
+            temps = range(2500, 4100, 100)+range(4250, 6250, 250)
+        if (not gravs):
+            gravs = range(300, 550, 50)
+
+        for T in temps:
+            for G in gravs:
+                pf.write('RUN            '+str(run_number)+'\n')
+                if mode == 'gridstokes':
+                    pf.write('stokes_out   \''+prefix+
+                        '_MARCS_T'+str(T)+'G'+str(G)+'\'\n')
+                else:
+                    pf.write('smoothed_out   \''+prefix+
+                        '_MARCS_T'+str(T)+'G'+str(G)+'\'\n')
+                pf.write('hardpost_out   \'../../Output/'+b_dir+'/dummy.ps\'\n')
+                pf.write('model_in       \'MARCS_T'+
+                        str(T)+'_G'+str(G/100.0)+'_M0.0_t2.0.md\'\n')
+                pf.write('abundances     1  1\n')
+                pf.write('    12      0.0\n')
+                run_number += 1
+    pf.close()
+
+
+
+class MoogStokes_IV_Spectrum( object ):
+    def __init__(self, name, **kwargs):
+        self.name = name
+        if "DIR" in kwargs.keys():
+            self.directory = kwargs["DIR"]
+        else:
+            self.directory = '../'
+        if "DELTAV" in kwargs.keys():
+            self.deltav = kwargs["DELTAV"]
+        else:
+            self.deltav = 0.1            #  wl spacing in km/s
+        if "VSINI" in kwargs.keys():
+            self.vsini = kwargs["VSINI"]
+        else:
+            self.vsini = 0.0
+
+        self.angle_file = self.directory+self.name+'.angles'
+        self.continuum_file = self.directory+self.name+'.continuum'
+        self.I_file = self.directory+self.name+'.spectrum_I'
+        self.V_file = self.directory+self.name+'.spectrum_V'
+
+        self.nangles = 0
+        self.phi = []
+        self.mu = []
+        self.wl = []
+        self.I = []
+        self.V = []
+        self.continuum = []
+
+        self.loadAngles()
+        self.loadSpectra()
+        self.interpolateSpectra()
+        self.diskInt()
+
+
+    def loadAngles(self):
+        df = open(self.angle_file, 'r')
+        for line in df:
+            l = line.split()
+            if len(l) == 1:
+                self.nangles = int(l[0])
+            else:
+                self.phi.append(float(l[1]))
+                self.mu.append(float(l[2]))
+
+        self.phi = numpy.array(self.phi)
+        self.mu = numpy.array(self.mu)
+
+    def loadSpectra(self):
+        df_I = open(self.I_file, 'r')
+        df_V = open(self.V_file, 'r')
+        df_C = open(self.continuum_file, 'r')
+
+        continuum = []
+        I = []
+        V = []
+        wl = []
+        for line in df_C:
+            l = line.split()
+            wl.append(float(l[0]))
+            a = []
+            for fluxes in l[1:]:
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print("Warning! Crazy Continuum format!", fluxes)
+                    a.append(float(0.0))
+            continuum.append(a)
+
+        for line in df_I:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print("Woah there pardner! Crazy format - Stokes I!", fluxes)
+                    a.append(float(0.0))
+            I.append(a)
+
+        for line in df_V:
+            l = line.split()
+            a = []
+            for fluxes in l[1:]:
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print("Woah there pardner! Crazy format - Stokes V!", fluxes)
+                    a.append(float(0.0))
+            V.append(a)
+
+        self.wl = numpy.array(wl)
+        I = numpy.array(I)
+        V = numpy.array(V)
+        continuum = numpy.array(continuum)
+        self.continuum = continuum.transpose()
+        self.I = I.transpose()/self.continuum
+        self.V = V.transpose()/self.continuum
+
+        wave = numpy.mean(self.wl)
+        if ((1.0/(wave/10000.0)) < 2.4):
+            self.alpha = -0.023 + 0.292/(wave/10000.0)
+        else:
+            self.alpha = -0.507 + 0.441/(wave/10000.0)
+
+    def interpolateSpectra(self):
+        deltav = self.deltav
+        c = 3e5                        #km/s
+        wl_start = numpy.min(self.wl)
+        wl_max = numpy.max(self.wl)
+        new_wl = []
+        new_wl.append(wl_start)
+        while new_wl[-1] < wl_max:
+            d_lambda = new_wl[-1]*deltav/c
+            new_wl.append(new_wl[-1]+d_lambda)
+        self.new_wl = numpy.array(new_wl[0:-1])
+
+        new_I = []
+        new_V = []
+        for I,V in zip(self.I, self.V):
+            fI = scipy.interpolate.UnivariateSpline(self.wl, I, s=0)
+            fV = scipy.interpolate.UnivariateSpline(self.wl, V, s=0)
+            new_I.append(fI(self.new_wl))
+            new_V.append(fV(self.new_wl))
+
+        self.new_I = numpy.array(new_I)
+        self.new_V = numpy.array(new_V)
+
+    def diskInt(self):
+        deltav = self.deltav
+        vsini = self.vsini
+        c = 3e5
+        limb_darkening = []
+        for i in range(len(self.mu)):
+            limb_darkening.append(1.0-(1.0-self.mu[i]**(self.alpha)))
+
+        self.limb_darkening = numpy.array(limb_darkening)
+        continuum = []
+        for i in range(len(self.mu)):
+            self.new_I[i] *= self.limb_darkening[i]
+            continuum.append(numpy.ones(len(self.new_I[i]))
+                    *self.limb_darkening[i])
+
+        continuum = numpy.array(continuum)
+
+        self.final_spectrum = rtint(self.mu, self.new_I,
+                continuum, deltav, vsini, 0.0)
+        
+
+def rtint(mu, inten, cont, deltav, vsini_in, vrt_in, **kwargs):
     """
     This is a python translation of Jeff Valenti's disk integration routine
     
@@ -478,7 +746,7 @@ def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
     #between rmu(i) and rmu(i+1).  The innermost boundary, r(0) is set to 0
     #(Disk center) and the outermost boundary r(nmu) is set to to 1 (limb).
     if ((nmu > 1) | (vsini != 0)):
-        r = numpy.sqrt(0.5*(rmu[0:-1]**2.0+rmu[1:])).tolist
+        r = numpy.sqrt(0.5*(rmu[0:-1]**2.0+rmu[1:])).tolist()
         r.insert(0, 0.0)
         r.append(1.0)
         r = numpy.array(r)
@@ -504,15 +772,20 @@ def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
     #Loop through annuli, constructing and convolving with rotation kernels.
     dummy = 0
     yfine = numpy.zeros(nfine)
+    cfine = numpy.zeros(nfine)
     flux = numpy.zeros(nfine)
-    for m, y, w, i in zip(mu, inten, wt, range(nmu)):
+    continuum = numpy.zeros(nfine)
+    for m, y, c, w, i in zip(mu, inten, cont, wt, range(nmu)):
         #use cubic spline routine to make an oversampled version of the
         #intensity profile for the current annulus.
         if os== 1:
             yfine = y.copy()
+            cfine = c.copy()
         else:
             yspl = scipy.interpolate.splrep(xpix, y)
+            cspl = scipy.interpolate.splref(xpix, c)
             yfine = scipy.interpolate.splev(yspl, xfine)
+            cfine = scipy.interpolate.splev(cspl, xfine)
 
     # Construct the convolution kernel which describes the distribution of 
     # rotational velocities present in the current annulus.  The distribution
@@ -521,13 +794,13 @@ def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
     # piece for radial velocities less than the maximum velocity along the
     # inner edge of the annulus, and one piece for velocities greater than this
     # limit.
-        if vsini < 0:
-            r1 = r(i)
-            r2 = r(i+1)
+        if vsini > 0:
+            r1 = r[i]
+            r2 = r[i+1]
             dv = deltav/os
             maxv = vsini * r2
             nrk = 2*long(maxv/dv) + 3
-            v = dv * (numpy.array(nrk) - ((nrk-1)/2.))
+            v = dv * (numpy.arange(nrk) - ((nrk-1)/2.))
             rkern = numpy.zeros(nrk)
             j1 = scipy.where(abs(v) < vsini*r1)
             if len(j1[0]) > 0:
@@ -545,18 +818,19 @@ def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
     # may also be done with a routine called "externally" which efficiently
     # shifts and adds.
             if nrk > 3:
-                yfine = scipy.convolve(yfine, rkern)
+                yfine = scipy.convolve(yfine, rkern, mode='same')
+                cfine = scipy.convolve(cfine, rkern, mode='same')
 
     # Calculate projected simga for radial and tangential velocity distributions.
         sigma = os*vrt/numpy.sqrt(2.0) /deltav
         sigr = sigma * m
-        sigt = sigma * sqrt(1.0 - m**2.)
+        sigt = sigma * numpy.sqrt(1.0 - m**2.)
 
     # Figure out how many points to use in macroturbulence kernel
         nmk = max(min(round(sigma*10), (nfine-3)/2), 3)
 
     # Construct radial macroturbulence kernel w/ sigma of mu*VRT/sqrt(2)
-        if sgr > 0:
+        if sigr > 0:
             xarg = (numpy.range(2*nmk+1)-nmk) / sigr   # exponential arg
             mrkern = numpy.exp(max((-0.5*(xarg**2)),-20.0))
             mrkern = mrkern/mrkern.sum()
@@ -576,13 +850,15 @@ def rtint(mu, inten, deltav, vsini_in, vrt_in, **kwargs):
     # Sum the radial and tangential components, weighted by surface area
         area_r = 0.5
         area_t = 0.5
-        mkern = area_r*mkern + area_t*mtkern
+        mkern = area_r*mrkern + area_t*mtkern
 
     # Convolve the total flux profiles, again padding the spectrum on both ends 
     # to protect against Fourier rinnging.
-        yfine = scipy.convolve(yfine, mkern)
+        yfine = scipy.convolve(yfine, mkern, mode='same')
+        cfine = scipy.convolve(cfine, mkern, mode='same')
 
     # Add contribution from current annulus to the running total
         flux += w*yfine
+        continuum += w*cfine
 
-    return flux
+    return flux/continuum
