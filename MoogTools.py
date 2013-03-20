@@ -460,7 +460,7 @@ def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None,
 
     pf.write('synlimits\n')
     pf.write('               '+str(wl_start)+' '
-             +str(wl_stop)+' 0.01 1.50\n')
+             +str(wl_stop)+' 0.01 3.50\n')
     pf.write('plotpars       1\n')
     pf.write('               '+str(wl_start)+' '
              +str(wl_stop)+' 0.02 1.00\n')
