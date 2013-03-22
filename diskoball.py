@@ -60,35 +60,60 @@ class Diskoball( object ):
             wl.append(float(l[0]))
             a = []
             for fluxes in l[1:]:
-                a.append(float(fluxes))
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print "Warning! I crazy format :", fluxes
+                    a.append(float(0.0))
+            
             I.append(a)
 
         for line in StokesQ:
             l = line.split()
             a = []
             for fluxes in l[1:]:
-                a.append(float(fluxes))
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print "Warning! Q crazy format :", fluxes
+                    a.append(float(0.0))
+
             Q.append(a)
 
         for line in StokesU:
             l = line.split()
             a = []
             for fluxes in l[1:]:
-                a.append(float(fluxes))
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print "Warning! U crazy format :", fluxes
+                    a.append(float(0.0))
+
             U.append(a)
 
         for line in StokesV:
             l = line.split()
             a = []
             for fluxes in l[1:]:
-                a.append(float(fluxes))
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print "Warning! V crazy format :", fluxes
+                    a.append(float(0.0))
+
             V.append(a)
 
         for line in Continuum:
             l = line.split()
             a = []
             for fluxes in l[1:]:
-                a.append(float(fluxes))
+                try:
+                    a.append(float(fluxes))
+                except:
+                    print "Warning! C crazy format :", fluxes
+                    a.append(float(0.0))
+
             C.append(a)
         
         self.wl = numpy.array(wl)

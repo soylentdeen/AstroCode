@@ -32,6 +32,18 @@ def resample(x, y, R):
     bm = numpy.isfinite(result)
     return newx[int(len(xk)/2.0):-int(len(xk)/2.0)], result[bm]/normal[bm]
 
+def diff_spectra(x1, y1, x2, y2):
+    x1 = numpy.array(x1)
+    y1 = numpy.array(y1)
+    x2 = numpy.array(x2)
+    y2 = numpy.array(y2)
+    overlap_start = numpy.max([numpy.min(x1), numpy.min(x2)])
+    overlap_stop = numpy.min([numpy.max(x1), numpy.max(x2)])
+    overlap = scipy.where((x1 > overlap_start) & (x1 < overlap_stop))
+
+    y = scipy.interpolate.splrep(x2, y2)
+    return numpy.array(x1)[overlap], numpy.array(y1)[overlap] - scipy.interpolate.splev(x1[overlap],y)
+    
 
 def write_2col_spectrum(filename, wl, fl):
     '''
