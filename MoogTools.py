@@ -19,60 +19,77 @@ class periodicTable( object ):
         return retval
 
 class VALD_Line( object ):
-    def __init__(self, line1, line2, pt):
-        l1 = line1.split(',')
-        l2 = line2.split()
-        self.element = pt.translate(l1[0].strip('\'').split()[0])
-        self.ionization = int(l1[0].strip('\'').split()[1])-1
-        self.species = self.element + self.ionization/10.0
-        self.wl = float(l1[1])
-        self.loggf = float(l1[2])
-        self.expot_lo = float(l1[3])
-        self.J_lo = float(l1[4])
-        self.expot_hi = float(l1[5])
-        self.J_hi = float(l1[6])
-        self.g_lo = float(l1[7])
-        self.g_hi = float(l1[8])
-        self.g_eff = float(l1[9])
-        self.radiative = float(l1[10])
-        self.stark = float(l1[11])
-        self.VdW = float(l1[12])
-        self.DissE = -99.0
-        self.transition = line2.strip().strip('\'')
+    def __init__(self, line1, line2='', pt='', MOL=False, **kwargs):
+        if MOL:
+            l = line1.split()
+            self.wl = float(l[0])
+            self.species = float(l[1])
+            self.expot_lo = float(l[2])
+            self.loggf = float(l[3])
+            self.DissE = float(l[4])
+            self.VdW = 0.0
+            self.radiative = 0.0
+            self.stark = 0.0
+            self.zeeman = {}
+            self.zeeman["NOFIELD"] = [self.wl,self.loggf]
+        else:
+            l1 = line1.split(',')
+            l2 = line2.split()
+            self.element = pt.translate(l1[0].strip('\'').split()[0])
+            self.ionization = int(l1[0].strip('\'').split()[1])-1
+            self.species = self.element + self.ionization/10.0
+            self.wl = float(l1[1])
+            self.loggf = float(l1[2])
+            self.expot_lo = float(l1[3])
+            self.J_lo = float(l1[4])
+            self.expot_hi = float(l1[5])
+            self.J_hi = float(l1[6])
+            self.g_lo = float(l1[7])
+            self.g_hi = float(l1[8])
+            self.g_eff = float(l1[9])
+            self.radiative = float(l1[10])
+            self.stark = float(l1[11])
+            self.VdW = float(l1[12])
+            self.DissE = -99.0
+            self.transition = line2.strip().strip('\'')
 
-        if (self.g_lo == 99.0):
-            if not (self.species in [70.1, 25.2]):
-                angmom = {"S":0, "P":1, "D":2, "F":3, "G":4, "H":5, "I":6, "K":7, "L":8, "M":9}
-                n = 0
-                try:
-                    for char in self.transition:
-                        if char.isdigit():
-                            S = (float(char)-1.0)/2.0
-                        if ((char.isupper()) & (n < 2)):
-                            n+=1
-                            L = angmom[char]
-                            if n == 1:
-                                if (self.J_lo > 0.0):
-                                    self.g_lo = 1.5+(S*(S+1.0)-L*(L+1))/(2*self.J_lo*(self.J_lo+1))
+            if (self.g_lo == 99.0):
+                if not (self.species in [70.1, 25.2]):
+                    angmom = {"S":0, "P":1, "D":2, "F":3, "G":4, "H":5,
+                            "I":6, "K":7, "L":8, "M":9}
+                    n = 0
+                    try:
+                        for char in self.transition:
+                            if char.isdigit():
+                                S = (float(char)-1.0)/2.0
+                            if ((char.isupper()) & (n < 2)):
+                                n+=1
+                                L = angmom[char]
+                                if n == 1:
+                                    if (self.J_lo > 0.0):
+                                        self.g_lo = (1.5+(S*(S+1.0)-L*(L+1))/
+                                                (2*self.J_lo*(self.J_lo+1)))
+                                    else:
+                                        self.g_lo = 0.0
                                 else:
-                                    self.g_lo = 0.0
-                            else:
-                                if (self.J_hi > 0.0):
-                                    self.g_hi = 1.5+(S*(S+1.0)-L*(L+1))/(2*self.J_hi*(self.J_hi+1))
-                                else:
-                                    self.g_hi = 0.0
-                except:
+                                    if (self.J_hi > 0.0):
+                                        self.g_hi = (1.5+(S*(S+1.0)-L*(L+1))/
+                                                (2*self.J_hi*(self.J_hi+1)))
+                                    else:
+                                        self.g_hi = 0.0
+                    except:
+                        self.g_lo = 0.0
+                        self.g_hi = 0.0
+                        print("Ooops!")
+                else:
                     self.g_lo = 0.0
                     self.g_hi = 0.0
-                    print("Ooops!")
-            else:
-                self.g_lo = 0.0
-                self.g_hi = 0.0
    
-        self.lower = Observed_Level(self.J_lo, self.g_lo, self.expot_lo)
-        self.upper = Observed_Level(self.J_hi, self.g_hi, self.expot_lo+12400.0/self.wl)
-        self.zeeman = {}
-        self.zeeman["NOFIELD"] = [self.wl,self.loggf]
+            self.lower = Observed_Level(self.J_lo, self.g_lo, self.expot_lo)
+            self.upper = Observed_Level(self.J_hi, self.g_hi,
+                    self.expot_lo+12400.0/self.wl)
+            self.zeeman = {}
+            self.zeeman["NOFIELD"] = [self.wl,self.loggf]
 
     def zeeman_splitting(self, B, **kwargs):
         self.compute_zeeman_transitions(B, **kwargs)
@@ -343,6 +360,25 @@ class VALD_Line( object ):
                         else:
                             out.write('%10.3f\n' %
                                     (self.stark))
+                    else:
+                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                (self.wl, self.species, self.expot_lo,self.loggf))
+                        if self.VdW == 0.0:
+                            out.write('%10s%10.3f%20s' %
+                                    (' ',self.DissE, ' '))
+                        else:
+                            out.write('%10.3f%10.3f%20s' %
+                                    (self.VdW, self.DissE, ' '))
+                        if self.radiative == 0:
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if self.stark == 0:
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
 
 class zeemanTransition( object):
     def __init__(self, wavelength, weight, m_up, m_low):
@@ -394,6 +430,11 @@ def parse_VALD(VALD_list, strong_file, molecules, wl_start, wl_stop, Bfield):
                         stronglines.append(current_line)
                     else:
                         weaklines.append(current_line)
+
+
+    mol_in = open(molecules, 'r')
+    for line in mol_in:
+        weaklines.append(VALD_Line(line, MOL=True))
 
     return stronglines, weaklines
 
