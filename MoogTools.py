@@ -434,7 +434,10 @@ def parse_VALD(VALD_list, strong_file, molecules, wl_start, wl_stop, Bfield):
 
     mol_in = open(molecules, 'r')
     for line in mol_in:
-        weaklines.append(VALD_Line(line, MOL=True))
+        l = line.split()
+        wl = float(l[0])
+        if ( (wl > wl_start) & (wl < wl_stop) ):
+            weaklines.append(VALD_Line(line, MOL=True))
 
     return stronglines, weaklines
 
@@ -501,7 +504,7 @@ def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None,
 
     pf.write('synlimits\n')
     pf.write('               '+str(wl_start)+' '
-             +str(wl_stop)+' 0.01 3.50\n')
+             +str(wl_stop)+' 0.01 1.50\n')
     pf.write('plotpars       1\n')
     pf.write('               '+str(wl_start)+' '
              +str(wl_stop)+' 0.02 1.00\n')
