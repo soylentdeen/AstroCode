@@ -7,7 +7,16 @@ import pyfits
 import string
 
 def resample(x, y, R):
-    ''' This routine convolves a given spectrum to a resolution R'''
+    '''
+    This routine convolves a given spectrum to a resolution R
+    syntax:
+    new_x, new_y = resample(x, y, R)
+
+    where:
+    x, y: Original wavelength and flux numpy arrays
+    R: Desired resolving power
+    new_x, new_y: new wavelength and flux arrays
+    '''
 
     subsample = 16.0
 

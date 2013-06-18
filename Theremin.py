@@ -2,35 +2,47 @@ import scipy
 import numpy
 import SEDTools
 import SpectralTools
+import matplotlib.pyplot as pyplot
 
 def findSpectrumShift(x, flat, x_sm, y_sm):
     """
-        This routine finds the wavelength and continuum shifts for a given
-        wavelength window
+    This routine finds the wavelength and continuum shifts for a given
+    wavelength window
     """
+    fig = pyplot.figure(0)
+    ax=fig.add_axes([0.1, 0.1, 0.8, 0.8])
     window = scipy.where( (x > min(x_sm)) & (x < max(x_sm)) )[0]
     feature_x = x[window]
-    model = scipy.interpolate.interpolate.interp1d(x_sm, y_sm, kind='linear',
-            bounds_error = False)
-    ycorr = scipy.correlate((1.0-flat[window]), (1.0-model(feature_x)), mode='full')
+    fine_x = numpy.linspace(min(feature_x), max(feature_x), num=len(feature_x)*10.0)
+    model = scipy.interpolate.interpolate.interp1d(x_sm, y_sm, kind='linear',bounds_error = False)
+    observed = scipy.interpolate.interpolate.interp1d(feature_x, flat[window], kind='linear', bounds_error=False)
+    ycorr = scipy.correlate((1.0-observed(fine_x)), (1.0-model(fine_x)), mode='full')
     xcorr = scipy.linspace(0, len(ycorr)-1, num=len(ycorr))
 
-    fitfunc = lambda p,x: p[0]*scipy(-(x-p[1])**2.0/(2.0*p[2]**2.0)) + p[3]
-    errfunc = lambda p,x,y: fitfunc(p,x) - y
+    #fitfunc = lambda p,x: p[0]*scipy.exp(-(x-p[1])**2.0/(2.0*p[2]**2.0)) + p[3]
+    #errfunc = lambda p,x,y: fitfunc(p,x) - y
 
-    x_zoom = xcorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
-    y_zoom = ycorr[len(ycorr)/2 - 3: len(ycorr)/2+5]
+    x_zoom = xcorr[len(ycorr)/2 - 100: len(ycorr)/2+100]
+    y_zoom = ycorr[len(ycorr)/2 - 100: len(ycorr)/2+100]
+    max_index = numpy.argsort(y_zoom)[-1]
+    offset_computed = (x_zoom[max_index] - len(xcorr)/2.0)/10.0*(feature_x[1]-feature_x[0])
+    #ax.plot(x_zoom, y_zoom)
+    #fig.show()
+    #print wl_shift
+    #raw_input()
 
-    p_guess = [ycorr[len(ycorr)/2], len(ycorr)/2, 3.0, 0.0001]
-    p1, success = scipy.optimize.leastsq(errfunc, p_guess, args = (x_zoom, y_zoom))
+    #p_guess = [ycorr[len(ycorr)/2], len(ycorr)/2, 3.0, 0.0001]
+    #p1, success = scipy.optimize.leastsq(errfunc, p_guess, args = (x_zoom, y_zoom))
 
-    fit = p1[0]*scipy.exp(-(x_zoom-p1[1])**2/(2.0*p1[2]**2)) + p1[3]
+    #fit = p1[0]*scipy.exp(-(x_zoom-p1[1])**2/(2.0*p1[2]**2)) + p1[3]
 
-    xcorr = p1[0]
-    nLags = xcorr-(len(window)-1.5)
-    offset_computed = nLags*(feature_x[0]-feature_x[1])
-    if abs(offset_computed) > 20:
-        offset_computed = 0
+    #xcorr = p1[0]
+    #nLags = xcorr-(len(window)-1.5)
+    #offset_computed = nLags*(feature_x[0]-feature_x[1])
+    #if (abs(offset_computed) > 20):
+    #    print 'Ha!', offset_computed
+    #    offset_computed = 0
+    #print asdf
 
     return offset_computed
 
