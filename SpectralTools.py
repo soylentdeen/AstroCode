@@ -112,7 +112,7 @@ def read_IRAF_fits_spectrum(filename):
     dat = hdulist[0].data
 
     "Finds the number of orders"
-    n_orders = int(hdr["NAXIS2"])
+    #n_orders = int(hdr["NAXIS2"])
     waveTable = hdr["WAT2*"]
 
     "Strings together the wavelength conversion strings"

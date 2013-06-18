@@ -2,6 +2,7 @@ import scipy
 import scipy.interpolate
 import numpy
 import os
+import SpectralTools
 
 
 class periodicTable( object ):
@@ -18,79 +19,197 @@ class periodicTable( object ):
         retval = self.Zsymbol_table[ID]
         return retval
 
-class VALD_Line( object ):
-    def __init__(self, line1, line2='', pt='', MOL=False, **kwargs):
-        if MOL:
-            l = line1.split()
-            self.wl = float(l[0])
-            self.species = float(l[1])
-            self.expot_lo = float(l[2])
-            self.loggf = float(l[3])
-            self.DissE = float(l[4])
-            self.VdW = 0.0
-            self.radiative = 0.0
-            self.stark = 0.0
-            self.zeeman = {}
-            self.zeeman["NOFIELD"] = [self.wl,self.loggf]
-        else:
-            l1 = line1.split(',')
-            l2 = line2.split()
-            self.element = pt.translate(l1[0].strip('\'').split()[0])
-            self.ionization = int(l1[0].strip('\'').split()[1])-1
-            self.species = self.element + self.ionization/10.0
-            self.wl = float(l1[1])
-            self.loggf = float(l1[2])
-            self.expot_lo = float(l1[3])
-            self.J_lo = float(l1[4])
-            self.expot_hi = float(l1[5])
-            self.J_hi = float(l1[6])
-            self.g_lo = float(l1[7])
-            self.g_hi = float(l1[8])
-            self.g_eff = float(l1[9])
-            self.radiative = float(l1[10])
-            self.stark = float(l1[11])
-            self.VdW = float(l1[12])
-            self.DissE = -99.0
-            self.transition = line2.strip().strip('\'')
+class HITRAN_Dictionary( object ):
+    def __init__(self):
 
-            if (self.g_lo == 99.0):
-                if not (self.species in [70.1, 25.2]):
-                    angmom = {"S":0, "P":1, "D":2, "F":3, "G":4, "H":5,
-                            "I":6, "K":7, "L":8, "M":9}
-                    n = 0
-                    try:
-                        for char in self.transition:
-                            if char.isdigit():
-                                S = (float(char)-1.0)/2.0
-                            if ((char.isupper()) & (n < 2)):
-                                n+=1
-                                L = angmom[char]
-                                if n == 1:
-                                    if (self.J_lo > 0.0):
-                                        self.g_lo = (1.5+(S*(S+1.0)-L*(L+1))/
-                                                (2*self.J_lo*(self.J_lo+1)))
-                                    else:
-                                        self.g_lo = 0.0
-                                else:
-                                    if (self.J_hi > 0.0):
-                                        self.g_hi = (1.5+(S*(S+1.0)-L*(L+1))/
-                                                (2*self.J_hi*(self.J_hi+1)))
-                                    else:
-                                        self.g_hi = 0.0
-                    except:
-                        self.g_lo = 0.0
-                        self.g_hi = 0.0
-                        print("Ooops!")
-                else:
-                    self.g_lo = 0.0
-                    self.g_hi = 0.0
-   
-            self.lower = Observed_Level(self.J_lo, self.g_lo, self.expot_lo)
-            self.upper = Observed_Level(self.J_hi, self.g_hi,
-                    self.expot_lo+12400.0/self.wl)
-            self.zeeman = {}
-            self.zeeman["NOFIELD"] = [self.wl,self.loggf]
+        # HITRAN codes:
+        #  5 : CO
+        # 13 : OH
+        self.isotopes = {5:{1:608.01216,2:608.01316,3:608.01218,4:608.01217,5:608.01318,6:608.01317},
+                13:{1:108.01160,2:108.01180,3:108.02160}}
+        self.DissE = {5:11.10, 13:4.412}
 
+
+class Spectral_Line( object ):
+    def __init__(self):
+        self.wl = None
+        self.species = None
+        self.expot_lo = None
+        self.loggf = None
+        self.DissE = None
+        self.VdW = None
+        self.radiative = None
+        self.stark = None
+        self.zeeman = {}
+        self.transition = None
+        self.J_lo = None
+        self.J_hi = None
+        self.g_lo = None
+        self.g_hi = None
+        self.g_eff = None
+
+    def dump(self, **kwargs):
+        if "out" in kwargs:
+            out = kwargs["out"]
+            if kwargs["mode"].upper() == 'MOOG':
+                if( (self.expot_lo < 20.0) & (self.species % 1 <= 0.2)):
+                    if not(self.DissE):
+                        for i in range(len(self.zeeman["PI"][0])):
+                            out.write('%10.3f%10s%10.3f%10.5f' %
+                               (self.zeeman["PI"][0][i],
+                               self.species,self.expot_lo,self.zeeman["PI"][1][i]))
+                            if self.VdW == 0:
+                                out.write('%20s%20.3f'% (' ',0.0))
+                            else:
+                                out.write('%10.3f%20s%10.3f' %
+                                        (self.VdW, ' ', 0.0))
+                            if self.radiative == 0:
+                                out.write('%10.3s'% (' '))
+                            else:
+                                out.write('%10.3f' %
+                                        (self.radiative))
+                            if self.stark == 0:
+                                out.write('%10s\n'% (' '))
+                            else:
+                                out.write('%10.3f\n' %
+                                        (self.stark))
+                        for i in range(len(self.zeeman["LCP"][0])):
+                            out.write('%10.3f%10s%10.3f%10.5f' %
+                               (self.zeeman["LCP"][0][i],
+                               self.species,self.expot_lo,self.zeeman["LCP"][1][i]))
+                            if self.VdW == 0:
+                                out.write('%20s%20.3f'% (' ',-1.0))
+                            else:
+                                out.write('%10.3f%20s%10.3f' %
+                                        (self.VdW, ' ', -1.0))
+                            if self.radiative == 0:
+                                out.write('%10.3s'% (' '))
+                            else:
+                                out.write('%10.3f' %
+                                        (self.radiative))
+                            if self.stark == 0:
+                                out.write('%10s\n'% (' '))
+                            else:
+                                out.write('%10.3f\n' %
+                                        (self.stark))
+                        for i in range(len(self.zeeman["RCP"][0])):
+                            out.write('%10.3f%10s%10.3f%10.5f' %
+                               (self.zeeman["RCP"][0][i],
+                               self.species,self.expot_lo,self.zeeman["RCP"][1][i]))
+                            if self.VdW == 0:
+                                out.write('%20s%20.3f'% (' ',1.0))
+                            else:
+                                out.write('%10.3f%20s%10.3f' %
+                                        (self.VdW, ' ', 1.0))
+                            if self.radiative == 0:
+                                out.write('%10.3s'% (' '))
+                            else:
+                                out.write('%10.3f' %
+                                        (self.radiative))
+                            if self.stark == 0:
+                                out.write('%10s\n'% (' '))
+                            else:
+                                out.write('%10.3f\n' %
+                                        (self.stark))
+                    else:
+                        #RCP
+                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                (self.wl, self.species, self.expot_lo,self.loggf))
+                        if not(self.VdW):
+                            out.write('%10s%10.3f%20.3f' %
+                                    (' ',self.DissE, 1.0))
+                        else:
+                            out.write('%10.3f%10.3f%20.3f' %
+                                    (self.VdW, self.DissE, 1.0))
+                        if not(self.radiative):
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if not(self.stark):
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
+                        #PI
+                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                (self.wl, self.species, self.expot_lo,self.loggf))
+                        if not(self.VdW):
+                            out.write('%10s%10.3f%20.3f' %
+                                    (' ',self.DissE, 0.0))
+                        else:
+                            out.write('%10.3f%10.3f%20.3f' %
+                                    (self.VdW, self.DissE, 0.0))
+                        if not(self.radiative):
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if not(self.stark):
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
+                        #LCP
+                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                (self.wl, self.species, self.expot_lo,self.loggf))
+                        if not(self.VdW):
+                            out.write('%10s%10.3f%20.3f' %
+                                    (' ',self.DissE, -1.0))
+                        else:
+                            out.write('%10.3f%10.3f%20.3f' %
+                                    (self.VdW, self.DissE, -1.0))
+                        if not(self.radiative):
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if not(self.stark):
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
+            elif kwargs["mode"].upper() == "MOOGSCALAR":
+                if( (self.expot_lo < 20.0) & (self.species % 1 <= 0.2)):
+                    if not(self.DissE):
+                        out.write('%10.3f%10s%10.3f%10.5f' %
+                           (self.zeeman["NOFIELD"][0],
+                           self.species,self.expot_lo,
+                           self.zeeman["NOFIELD"][1]))
+                        if not(self.VdW):
+                            out.write('%40s'% (' '))
+                        else:
+                            out.write('%10.3f%30s' %
+                                    (self.VdW, ' '))
+                        if not(self.radiative):
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if not(self.stark):
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
+                    else:
+                        out.write('%10.3f%10.5f%10.3f%10.3f' %
+                                (self.wl, self.species, self.expot_lo,self.loggf))
+                        if not(self.VdW):
+                            out.write('%10s%10.3f%20s' %
+                                    (' ',self.DissE, ' '))
+                        else:
+                            out.write('%10.3f%10.3f%20s' %
+                                    (self.VdW, self.DissE, ' '))
+                        if not(self.radiative):
+                            out.write('%10.3s'% (' '))
+                        else:
+                            out.write('%10.3f' %
+                                    (self.radiative))
+                        if not(self.stark):
+                            out.write('%10s\n'% (' '))
+                        else:
+                            out.write('%10.3f\n' %
+                                    (self.stark))
     def zeeman_splitting(self, B, **kwargs):
         self.compute_zeeman_transitions(B, **kwargs)
         wl = []
@@ -217,168 +336,91 @@ class VALD_Line( object ):
         self.lcp_transitions = lcp_transitions
         self.rcp_transitions = rcp_transitions
 
-    def dump(self, **kwargs):
-        if "out" in kwargs:
-            out = kwargs["out"]
-            if kwargs["mode"].upper() == 'MOOG':
-                if( (self.expot_lo < 20.0) & (self.species % 1 <= 0.2)):
-                    if (self.DissE == -99.0):
-                        for i in range(len(self.zeeman["PI"][0])):
-                            out.write('%10.3f%10s%10.3f%10.5f' %
-                               (self.zeeman["PI"][0][i],
-                               self.species,self.expot_lo,self.zeeman["PI"][1][i]))
-                            if self.VdW == 0:
-                                out.write('%20s%20.3f'% (' ',0.0))
+class VALD_Line( Spectral_Line ):
+    def __init__(self, line1, line2='', pt='', **kwargs):
+        l1 = line1.split(',')
+        l2 = line2.split()
+        self.element = pt.translate(l1[0].strip('\'').split()[0])
+        self.ionization = int(l1[0].strip('\'').split()[1])-1
+        self.species = self.element + self.ionization/10.0
+        self.wl = float(l1[1])
+        self.loggf = float(l1[2])
+        self.expot_lo = float(l1[3])
+        self.J_lo = float(l1[4])
+        self.expot_hi = float(l1[5])
+        self.J_hi = float(l1[6])
+        self.g_lo = float(l1[7])
+        self.g_hi = float(l1[8])
+        self.g_eff = float(l1[9])
+        self.radiative = float(l1[10])
+        self.stark = float(l1[11])
+        self.VdW = float(l1[12])
+        self.DissE = None
+        self.transition = line2.strip().strip('\'')
+
+        if (self.g_lo == 99.0):
+            if not (self.species in [70.1, 25.2]):
+                angmom = {"S":0, "P":1, "D":2, "F":3, "G":4, "H":5,
+                        "I":6, "K":7, "L":8, "M":9}
+                n = 0
+                try:
+                    for char in self.transition:
+                        if char.isdigit():
+                            S = (float(char)-1.0)/2.0
+                        if ((char.isupper()) & (n < 2)):
+                            n+=1
+                            L = angmom[char]
+                            if n == 1:
+                                if (self.J_lo > 0.0):
+                                    self.g_lo = (1.5+(S*(S+1.0)-L*(L+1))/
+                                            (2*self.J_lo*(self.J_lo+1)))
+                                else:
+                                    self.g_lo = 0.0
                             else:
-                                out.write('%10.3f%20s%10.3f' %
-                                        (self.VdW, ' ', 0.0))
-                            if self.radiative == 0:
-                                out.write('%10.3s'% (' '))
-                            else:
-                                out.write('%10.3f' %
-                                        (self.radiative))
-                            if self.stark == 0:
-                                out.write('%10s\n'% (' '))
-                            else:
-                                out.write('%10.3f\n' %
-                                        (self.stark))
-                        for i in range(len(self.zeeman["LCP"][0])):
-                            out.write('%10.3f%10s%10.3f%10.5f' %
-                               (self.zeeman["LCP"][0][i],
-                               self.species,self.expot_lo,self.zeeman["LCP"][1][i]))
-                            if self.VdW == 0:
-                                out.write('%20s%20.3f'% (' ',-1.0))
-                            else:
-                                out.write('%10.3f%20s%10.3f' %
-                                        (self.VdW, ' ', -1.0))
-                            if self.radiative == 0:
-                                out.write('%10.3s'% (' '))
-                            else:
-                                out.write('%10.3f' %
-                                        (self.radiative))
-                            if self.stark == 0:
-                                out.write('%10s\n'% (' '))
-                            else:
-                                out.write('%10.3f\n' %
-                                        (self.stark))
-                        for i in range(len(self.zeeman["RCP"][0])):
-                            out.write('%10.3f%10s%10.3f%10.5f' %
-                               (self.zeeman["RCP"][0][i],
-                               self.species,self.expot_lo,self.zeeman["RCP"][1][i]))
-                            if self.VdW == 0:
-                                out.write('%20s%20.3f'% (' ',1.0))
-                            else:
-                                out.write('%10.3f%20s%10.3f' %
-                                        (self.VdW, ' ', 1.0))
-                            if self.radiative == 0:
-                                out.write('%10.3s'% (' '))
-                            else:
-                                out.write('%10.3f' %
-                                        (self.radiative))
-                            if self.stark == 0:
-                                out.write('%10s\n'% (' '))
-                            else:
-                                out.write('%10.3f\n' %
-                                        (self.stark))
-                    else:
-                        #RCP
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
-                                (self.wl, self.species, self.expot_lo,self.loggf))
-                        if self.VdW == 0.0:
-                            out.write('%10s%10.3f%20.3f' %
-                                    (' ',self.DissE, 1.0))
-                        else:
-                            out.write('%10.3f%10.3f%20.3f' %
-                                    (self.VdW, self.DissE, 1.0))
-                        if self.radiative == 0:
-                            out.write('%10.3s'% (' '))
-                        else:
-                            out.write('%10.3f' %
-                                    (self.radiative))
-                        if self.stark == 0:
-                            out.write('%10s\n'% (' '))
-                        else:
-                            out.write('%10.3f\n' %
-                                    (self.stark))
-                        #PI
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
-                                (self.wl, self.species, self.expot_lo,self.loggf))
-                        if self.VdW == 0.0:
-                            out.write('%10s%10.3f%20.3f' %
-                                    (' ',self.DissE, 0.0))
-                        else:
-                            out.write('%10.3f%10.3f%20.3f' %
-                                    (self.VdW, self.DissE, 0.0))
-                        if self.radiative == 0:
-                            out.write('%10.3s'% (' '))
-                        else:
-                            out.write('%10.3f' %
-                                    (self.radiative))
-                        if self.stark == 0:
-                            out.write('%10s\n'% (' '))
-                        else:
-                            out.write('%10.3f\n' %
-                                    (self.stark))
-                        #LCP
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
-                                (self.wl, self.species, self.expot_lo,self.loggf))
-                        if self.VdW == 0.0:
-                            out.write('%10s%10.3f%20.3f' %
-                                    (' ',self.DissE, -1.0))
-                        else:
-                            out.write('%10.3f%10.3f%20.3f' %
-                                    (self.VdW, self.DissE, -1.0))
-                        if self.radiative == 0:
-                            out.write('%10.3s'% (' '))
-                        else:
-                            out.write('%10.3f' %
-                                    (self.radiative))
-                        if self.stark == 0:
-                            out.write('%10s\n'% (' '))
-                        else:
-                            out.write('%10.3f\n' %
-                                    (self.stark))
-            elif kwargs["mode"].upper() == "MOOGSCALAR":
-                if( (self.expot_lo < 20.0) & (self.species % 1 <= 0.2)):
-                    if (self.DissE == -99.0):
-                        out.write('%10.3f%10s%10.3f%10.5f' %
-                           (self.zeeman["NOFIELD"][0],
-                           self.species,self.expot_lo,
-                           self.zeeman["NOFIELD"][1]))
-                        if self.VdW == 0:
-                            out.write('%40s'% (' '))
-                        else:
-                            out.write('%10.3f%30s' %
-                                    (self.VdW, ' '))
-                        if self.radiative == 0:
-                            out.write('%10.3s'% (' '))
-                        else:
-                            out.write('%10.3f' %
-                                    (self.radiative))
-                        if self.stark == 0:
-                            out.write('%10s\n'% (' '))
-                        else:
-                            out.write('%10.3f\n' %
-                                    (self.stark))
-                    else:
-                        out.write('%10.3f%10.5f%10.3f%10.3f' %
-                                (self.wl, self.species, self.expot_lo,self.loggf))
-                        if self.VdW == 0.0:
-                            out.write('%10s%10.3f%20s' %
-                                    (' ',self.DissE, ' '))
-                        else:
-                            out.write('%10.3f%10.3f%20s' %
-                                    (self.VdW, self.DissE, ' '))
-                        if self.radiative == 0:
-                            out.write('%10.3s'% (' '))
-                        else:
-                            out.write('%10.3f' %
-                                    (self.radiative))
-                        if self.stark == 0:
-                            out.write('%10s\n'% (' '))
-                        else:
-                            out.write('%10.3f\n' %
-                                    (self.stark))
+                                if (self.J_hi > 0.0):
+                                    self.g_hi = (1.5+(S*(S+1.0)-L*(L+1))/
+                                            (2*self.J_hi*(self.J_hi+1)))
+                                else:
+                                    self.g_hi = 0.0
+                except:
+                    self.g_lo = 0.0
+                    self.g_hi = 0.0
+                    print("Parsing VALD Transition Failed! %f" % self.wl)
+                    print("%s\n" % self.transition)
+                else:
+                    self.g_lo = 0.0
+                    self.g_hi = 0.0
+   
+        self.lower = Observed_Level(self.J_lo, self.g_lo, self.expot_lo)
+        self.upper = Observed_Level(self.J_hi, self.g_hi,
+                self.expot_lo+12400.0/self.wl)
+        self.zeeman = {}
+        self.zeeman["NOFIELD"] = [self.wl,self.loggf]
+
+
+class HITRAN_Line( Spectral_Line ):
+    def __init__(self, line, hitran_dictionary, **kwargs):
+        hitran_code = int(line[0:2])
+        isotope_code = int(line[2])
+        self.species = hitran_dictionary.isotopes[hitran_code][isotope_code]
+        self.DissE = hitran_dictionary.DissE[hitran_code]
+        self.wl = 10000.0/float(line[3:15])*10000.0
+        self.expot_lo = 1.23986e-4*float(line[46:56])
+        Einstein_A = float(line[26:35])
+        g_up = float(line[145:154])
+        self.loggf = numpy.log10(1.884e-15*self.wl**2*g_up*Einstein_A)
+        self.VdW = None
+        self.radiative = None
+        self.stark = None
+        self.zeeman = {}
+        self.transition = None
+        self.J_lo = None
+        self.J_hi = None
+        self.g_lo = None
+        self.g_hi = None
+        self.g_eff = None
+        self.zeeman["NOFIELD"] = [self.wl, self.loggf]
+
 
 class zeemanTransition( object):
     def __init__(self, wavelength, weight, m_up, m_low):
@@ -402,7 +444,7 @@ class Observed_Level( object ):
 
         self.mj = numpy.arange(self.J, (-1.0*self.J)-0.5, step = -1)
 
-def parse_VALD(VALD_list, strong_file, molecules, wl_start, wl_stop, Bfield):
+def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield):
     pt = periodicTable()
 
     strong = []
@@ -431,15 +473,28 @@ def parse_VALD(VALD_list, strong_file, molecules, wl_start, wl_stop, Bfield):
                     else:
                         weaklines.append(current_line)
 
-
+    """
     mol_in = open(molecules, 'r')
     for line in mol_in:
         l = line.split()
         wl = float(l[0])
         if ( (wl > wl_start) & (wl < wl_stop) ):
             weaklines.append(VALD_Line(line, MOL=True))
+    """
 
     return stronglines, weaklines
+
+def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field):
+
+    ht = HITRAN_Dictionary()
+    hitran_in = open(HITRAN_file, 'r')
+    lines = []
+    for line in hitran_in:
+        current_line = HITRAN_Line(line, ht)
+        if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            lines.append(current_line)
+
+    return lines
 
 def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None, 
         gravs=None, mode='gridstokes', strongLines=False, **kwargs):
@@ -683,12 +738,14 @@ class MoogStokes_IV_Spectrum( object ):
 
         continuum = numpy.array(continuum)
 
-        self.final_spectrum = rtint(self.mu, self.new_I,
+        self.final_spectrum = self.rtint(self.mu, self.new_I,
                 continuum, deltav, vsini, 0.0)
         
+    def save(self, outfile):
+        SpectralTools.write_2col_spectrum(outfile, self.new_wl, self.final_spectrum)
 
-def rtint(mu, inten, cont, deltav, vsini_in, vrt_in, **kwargs):
-    """
+    def rtint(self, mu, inten, cont, deltav, vsini_in, vrt_in, **kwargs):
+        """
     This is a python translation of Jeff Valenti's disk integration routine
     
     PURPOSE:
@@ -760,149 +817,149 @@ def rtint(mu, inten, cont, deltav, vsini_in, vrt_in, **kwargs):
          01 Apr 99 GMH Use annuli weights, rather than assuming equal area.
          27 Feb 13 CPD Translated to Python
 
-    """
+        """
     
-    #make local copies of various input variables, which will be altered below
-    vsini = float(vsini_in)
-    vrt = float(vrt_in)
+        #make local copies of various input vars, which will be altered below
+        vsini = float(vsini_in)
+        vrt = float(vrt_in)
 
-    if "OSAMP" in kwargs:
-        os = max(round(kwargs["OSAMP"]), 1)
-    else:
-        os = 1
+        if "OSAMP" in kwargs:
+            os = max(round(kwargs["OSAMP"]), 1)
+        else:
+            os = 1
 
-    #Convert input MU to projected radii, R of annuli for a star of unit radius
-    #(which is just sine rather than cosine of the angle between the outward
-    #normal and the LOS)
-    rmu = numpy.sqrt(1.0-mu**2)
+        #Convert input MU to proj. radii, R of annuli for star of unit radius
+        #(which is just sine rather than cosine of the angle between the outward
+        #normal and the LOS)
+        rmu = numpy.sqrt(1.0-mu**2)
 
-    #Sort the projected radii and corresponding intensity spectra into ascending
-    #order (i.e. from disk center to the limb), which is equivalent to sorting
-    #MU in decending order
-    order = numpy.argsort(rmu)
-    rmu = rmu[order]
-    nmu = len(mu)
-    if (nmu == 1):
-        vsini = 0.0
+        #Sort the proj. radii and corresponding intensity spectra into ascending
+        #order (i.e. from disk center to limb), which is equivalent to sorting
+        #MU in decending order
+        order = numpy.argsort(rmu)
+        rmu = rmu[order]
+        nmu = len(mu)
+        if (nmu == 1):
+            vsini = 0.0
 
-    #Calculate the projected radii for boundaries of disk integration annuli.
-    #The n+1 boundaries are selected such that r(i+1) exactly bisects the area
-    #between rmu(i) and rmu(i+1).  The innermost boundary, r(0) is set to 0
-    #(Disk center) and the outermost boundary r(nmu) is set to to 1 (limb).
-    if ((nmu > 1) | (vsini != 0)):
-        r = numpy.sqrt(0.5*(rmu[0:-1]**2.0+rmu[1:])).tolist()
-        r.insert(0, 0.0)
-        r.append(1.0)
-        r = numpy.array(r)
-
-    #Calculate integration weights for each disk integration annulus.  The
-    #weight is just given by the relative area of each annulus, normalized such
-    #that the sum of all weights is unity.  Weights for limb darkening are
-    #included explicitly in the intensity profiles, so they aren't needed here.
-        wt = r[1:]**2.0 - r[0:-1]**2.0
-    else:
-        wt = numpy.array([1.0])
+        #Calculate the proj. radii for boundaries of disk integration annuli.
+        #The n+1 boundaries are selected so that r(i+1) exactly bisects the area
+        #between rmu(i) and rmu(i+1).  The innermost boundary, r(0) is set to 0
+        #(Disk center) and the outermost boundary r(nmu) is set to to 1 (limb).
+        if ((nmu > 1) | (vsini != 0)):
+            r = numpy.sqrt(0.5*(rmu[0:-1]**2.0+rmu[1:])).tolist()
+            r.insert(0, 0.0)
+            r.append(1.0)
+            r = numpy.array(r)
     
-    #Generate index vectors for input and oversampled points.  Note that the
-    #oversampled indicies are carefully chosen such that every "os" finely
-    #sampled points fit exactly into one input bin.  This makes it simple to
-    #"integrate" the finely sampled points at the end of the routine.
-
-    npts = len(inten[0])
-    xpix = numpy.arange(npts)
-    nfine = os*npts
-    xfine = 0.5/os * 2.0*numpy.arange(nfine)-os+1
-
-    #Loop through annuli, constructing and convolving with rotation kernels.
-    dummy = 0
-    yfine = numpy.zeros(nfine)
-    cfine = numpy.zeros(nfine)
-    flux = numpy.zeros(nfine)
-    continuum = numpy.zeros(nfine)
-    for m, y, c, w, i in zip(mu, inten, cont, wt, range(nmu)):
-        #use cubic spline routine to make an oversampled version of the
-        #intensity profile for the current annulus.
-        if os== 1:
-            yfine = y.copy()
-            cfine = c.copy()
+        #Calculate integration weights for each disk integration annulus.  The
+        #weight is given by the relative area of each annulus, normalized such
+        #that the sum of all weights is unity.  Weights for limb darkening are
+        #included explicitly in intensity profiles, so they aren't needed here.
+            wt = r[1:]**2.0 - r[0:-1]**2.0
         else:
-            yspl = scipy.interpolate.splrep(xpix, y)
-            cspl = scipy.interpolate.splref(xpix, c)
-            yfine = scipy.interpolate.splev(yspl, xfine)
-            cfine = scipy.interpolate.splev(cspl, xfine)
+            wt = numpy.array([1.0])
+        
+        #Generate index vectors for input and oversampled points.  Note that the
+        #oversampled indicies are carefully chosen such that every "os" finely
+        #sampled points fit exactly into one input bin.  This makes it simple to
+        #"integrate" the finely sampled points at the end of the routine.
 
-    # Construct the convolution kernel which describes the distribution of 
-    # rotational velocities present in the current annulus.  The distribution
-    # has been derived analyitically for annuli of arbitrary thickness in a 
-    # rigidly rotating star.  The kernel is constructed in two places: one 
-    # piece for radial velocities less than the maximum velocity along the
-    # inner edge of the annulus, and one piece for velocities greater than this
-    # limit.
-        if vsini > 0:
-            r1 = r[i]
-            r2 = r[i+1]
-            dv = deltav/os
-            maxv = vsini * r2
-            nrk = 2*long(maxv/dv) + 3
-            v = dv * (numpy.arange(nrk) - ((nrk-1)/2.))
-            rkern = numpy.zeros(nrk)
-            j1 = scipy.where(abs(v) < vsini*r1)
-            if len(j1[0]) > 0:
-                rkern[j1] = (numpy.sqrt((vsini*r2)**2 - v[j1]**2)-
-                        numpy.sqrt((vsini*r1)**2 - v[j1]**2))
-            j2 = scipy.where((abs(v) >= vsini*r1) & (abs(v) <= vsini*r2))
-            if len(j2[0]) > 0:
-                rkern[j2] = numpy.sqrt((vsini*r2)**2 - v[j2]**2)
-            rkern = rkern / rkern.sum()   # normalize kernel
+        npts = len(inten[0])
+        xpix = numpy.arange(npts)
+        nfine = os*npts
+        xfine = 0.5/os * 2.0*numpy.arange(nfine)-os+1
+
+        #Loop through annuli, constructing and convolving with rotation kernels.
+        dummy = 0
+        yfine = numpy.zeros(nfine)
+        cfine = numpy.zeros(nfine)
+        flux = numpy.zeros(nfine)
+        continuum = numpy.zeros(nfine)
+        for m, y, c, w, i in zip(mu, inten, cont, wt, range(nmu)):
+            #use cubic spline routine to make an oversampled version of the
+            #intensity profile for the current annulus.
+            if os== 1:
+                yfine = y.copy()
+                cfine = c.copy()
+            else:
+                yspl = scipy.interpolate.splrep(xpix, y)
+                cspl = scipy.interpolate.splref(xpix, c)
+                yfine = scipy.interpolate.splev(yspl, xfine)
+                cfine = scipy.interpolate.splev(cspl, xfine)
+
+        # Construct the convolution kernel which describes the distribution of 
+        # rotational velocities present in the current annulus. The distribution
+        # has been derived analyitically for annuli of arbitrary thickness in a 
+        # rigidly rotating star.  The kernel is constructed in two places: one 
+        # piece for radial velocities less than the maximum velocity along the
+        # inner edge of annulus, and one piece for velocities greater than this
+        # limit.
+            if vsini > 0:
+                r1 = r[i]
+                r2 = r[i+1]
+                dv = deltav/os
+                maxv = vsini * r2
+                nrk = 2*long(maxv/dv) + 3
+                v = dv * (numpy.arange(nrk) - ((nrk-1)/2.))
+                rkern = numpy.zeros(nrk)
+                j1 = scipy.where(abs(v) < vsini*r1)
+                if len(j1[0]) > 0:
+                    rkern[j1] = (numpy.sqrt((vsini*r2)**2 - v[j1]**2)-
+                            numpy.sqrt((vsini*r1)**2 - v[j1]**2))
+                j2 = scipy.where((abs(v) >= vsini*r1) & (abs(v) <= vsini*r2))
+                if len(j2[0]) > 0:
+                    rkern[j2] = numpy.sqrt((vsini*r2)**2 - v[j2]**2)
+                rkern = rkern / rkern.sum()   # normalize kernel
 
 
-    # Convolve the intensity profile with the rotational velocity kernel for
-    # this annulus.  Pad the end of each profile with as many points as are in
-    # the convolution kernel.  This reduces Fourier ringing.  The convolution 
-    # may also be done with a routine called "externally" which efficiently
-    # shifts and adds.
-            if nrk > 3:
-                yfine = scipy.convolve(yfine, rkern, mode='same')
-                cfine = scipy.convolve(cfine, rkern, mode='same')
+        # Convolve the intensity profile with the rotational velocity kernel for
+        # this annulus.  Pad end of each profile with as many points as are in
+        # the convolution kernel, reducing Fourier ringing.  The convolution 
+        # may also be done with a routine called "externally" which efficiently
+        # shifts and adds.
+                if nrk > 3:
+                    yfine = scipy.convolve(yfine, rkern, mode='same')
+                    cfine = scipy.convolve(cfine, rkern, mode='same')
 
-    # Calculate projected simga for radial and tangential velocity distributions.
-        sigma = os*vrt/numpy.sqrt(2.0) /deltav
-        sigr = sigma * m
-        sigt = sigma * numpy.sqrt(1.0 - m**2.)
+        # Calc projected simga for radial and tangential velocity distributions.
+            sigma = os*vrt/numpy.sqrt(2.0) /deltav
+            sigr = sigma * m
+            sigt = sigma * numpy.sqrt(1.0 - m**2.)
 
-    # Figure out how many points to use in macroturbulence kernel
-        nmk = max(min(round(sigma*10), (nfine-3)/2), 3)
+        # Figure out how many points to use in macroturbulence kernel
+            nmk = max(min(round(sigma*10), (nfine-3)/2), 3)
 
-    # Construct radial macroturbulence kernel w/ sigma of mu*VRT/sqrt(2)
-        if sigr > 0:
-            xarg = (numpy.range(2*nmk+1)-nmk) / sigr   # exponential arg
-            mrkern = numpy.exp(max((-0.5*(xarg**2)),-20.0))
-            mrkern = mrkern/mrkern.sum()
-        else:
-            mrkern = numpy.zeros(2*nmk+1)
-            mrkern[nmk] = 1.0    #delta function
+        # Construct radial macroturbulence kernel w/ sigma of mu*VRT/sqrt(2)
+            if sigr > 0:
+                xarg = (numpy.range(2*nmk+1)-nmk) / sigr   # exponential arg
+                mrkern = numpy.exp(max((-0.5*(xarg**2)),-20.0))
+                mrkern = mrkern/mrkern.sum()
+            else:
+                mrkern = numpy.zeros(2*nmk+1)
+                mrkern[nmk] = 1.0    #delta function
 
     # Construct tangential kernel w/ sigma of sqrt(1-mu**2)*VRT/sqrt(2.)
-        if sigt > 0:
-            xarg = (numpy.range(2*nmk+1)-nmk) /sigt
-            mtkern = exp(max((-0.5*(xarg**2)), -20.0))
-            mtkern = mtkern/mtkern.sum()
-        else:
-            mtkern = numpy.zeros(2*nmk+1)
-            mtkern[nmk] = 1.0
+            if sigt > 0:
+                xarg = (numpy.range(2*nmk+1)-nmk) /sigt
+                mtkern = exp(max((-0.5*(xarg**2)), -20.0))
+                mtkern = mtkern/mtkern.sum()
+            else:
+                mtkern = numpy.zeros(2*nmk+1)
+                mtkern[nmk] = 1.0
 
     # Sum the radial and tangential components, weighted by surface area
-        area_r = 0.5
-        area_t = 0.5
-        mkern = area_r*mrkern + area_t*mtkern
+            area_r = 0.5
+            area_t = 0.5
+            mkern = area_r*mrkern + area_t*mtkern
 
     # Convolve the total flux profiles, again padding the spectrum on both ends 
     # to protect against Fourier rinnging.
-        yfine = scipy.convolve(yfine, mkern, mode='same')
-        cfine = scipy.convolve(cfine, mkern, mode='same')
+            yfine = scipy.convolve(yfine, mkern, mode='same')
+            cfine = scipy.convolve(cfine, mkern, mode='same')
 
     # Add contribution from current annulus to the running total
-        flux += w*yfine
-        continuum += w*cfine
+            flux += w*yfine
+            continuum += w*cfine
 
-    return flux/continuum
+        return flux/continuum
