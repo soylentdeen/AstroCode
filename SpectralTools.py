@@ -7,16 +7,22 @@ import pyfits
 import string
 
 def resample(x, y, R):
-    '''
+    """
     This routine convolves a given spectrum to a resolution R
-    syntax:
-    new_x, new_y = resample(x, y, R)
+    :INPUTS:
+        x: numpy array containing wavelengths
+        y: numpy array containing fluxes
+        R: Desired resolving power
 
-    where:
-    x, y: Original wavelength and flux numpy arrays
-    R: Desired resolving power
-    new_x, new_y: new wavelength and flux arrays
-    '''
+    :RETURNS:
+        new_x: new wavelength array
+        new_y: new flux array
+
+    :EXAMPLE:
+     ::
+        highresx, higresy = SpectralTools.read_2col_spectrum('highres.dat')
+        lowresx, lowresy = resample(x, y, 2000)
+    """
 
     subsample = 16.0
 
@@ -42,6 +48,8 @@ def resample(x, y, R):
     return newx[int(len(xk)/2.0):-int(len(xk)/2.0)], result[bm]/normal[bm]
 
 def diff_spectra(x1, y1, x2, y2):
+    '''
+    '''
     x1 = numpy.array(x1)
     y1 = numpy.array(y1)
     x2 = numpy.array(x2)

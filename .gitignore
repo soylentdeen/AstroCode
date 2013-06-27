@@ -1,2 +1,5 @@
 *.pyc
 *.swp
+Theramin*
+SynthmagTools.py
+SourceData.py
