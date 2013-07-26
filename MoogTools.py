@@ -47,6 +47,7 @@ class Spectral_Line( object ):
         self.g_lo = None
         self.g_hi = None
         self.g_eff = None
+        self.verbose = False
 
     def dump(self, **kwargs):
         if "out" in kwargs:
@@ -358,6 +359,11 @@ class VALD_Line( Spectral_Line ):
         self.DissE = None
         self.transition = line2.strip().strip('\'')
 
+        if "verbose" in kwargs:
+            self.verbose = kwargs["verbose"]
+        else:
+            self.verbose = False
+
         if (self.g_lo == 99.0):
             if not (self.species in [70.1, 25.2]):
                 angmom = {"S":0, "P":1, "D":2, "F":3, "G":4, "H":5,
@@ -385,8 +391,9 @@ class VALD_Line( Spectral_Line ):
                 except:
                     self.g_lo = 0.0
                     self.g_hi = 0.0
-                    print("Parsing VALD Transition Failed! %f" % self.wl)
-                    print("%s\n" % self.transition)
+                    if self.verbose:
+                        print("Parsing VALD Transition Failed! %f" % self.wl)
+                        print("%s\n" % self.transition)
             else:
                 self.g_lo = 0.0
                 self.g_hi = 0.0
@@ -397,6 +404,9 @@ class VALD_Line( Spectral_Line ):
         self.zeeman = {}
         self.zeeman["NOFIELD"] = [self.wl,self.loggf]
 
+class Goorvitch_CO_Line( Spectral_Line ):
+    def __init__(self, line, **kwargs):
+        self.species = Goorvitch_dictionary.isotopes[
 
 class HITRAN_Line( Spectral_Line ):
     def __init__(self, line, hitran_dictionary, **kwargs):
@@ -405,9 +415,12 @@ class HITRAN_Line( Spectral_Line ):
         self.species = hitran_dictionary.isotopes[hitran_code][isotope_code]
         self.DissE = hitran_dictionary.DissE[hitran_code]
         self.wl = 10000.0/float(line[3:15])*10000.0
+        print self.wl, line[3:15]
+        raw_input()
         self.expot_lo = 1.23986e-4*float(line[46:56])
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
+        g_low = float(line[154:])
         self.loggf = numpy.log10(1.884e-15*self.wl**2*g_up*Einstein_A)
         self.VdW = None
         self.radiative = None
@@ -420,6 +433,11 @@ class HITRAN_Line( Spectral_Line ):
         self.g_hi = None
         self.g_eff = None
         self.zeeman["NOFIELD"] = [self.wl, self.loggf]
+
+        if "verbose" in kwargs:
+            self.verbose = kwargs["verbose"]
+        else:
+            self.verbose = False
 
 
 class zeemanTransition( object):
@@ -499,7 +517,7 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field):
 def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None, 
         gravs=None, mode='gridstokes', strongLines=False, **kwargs):
     if mode=='gridstokes':
-        fn = 'batch.gridstokes'
+        fn = 'batch.par'
         suffix = '.stokes'
     elif mode == 'gridsyn':
         fn = 'batch.gridsyn'

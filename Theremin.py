@@ -77,6 +77,19 @@ def binSyntheticSpectrum(spectrum, native_wl, new_wl):
 
     return retval
 
+def findContinuumPoints(x, y, **kwargs):
+    """
+       This routine uses normalized synthetic spectra to find regions of
+       spectra close to the conintuum level.  The continuum points can then
+       be used to compare observed spectra to the synthetic spectra
+    """
+    continuum_threshold = 0.01
+    if kwargs.has_key("continuum_threshold"):
+        continuum_threshold = kwargs["continuum_threshold"]
+
+    continuum = scipy.where( abs(y-1.0) < continuum_threshold)[0]
+    return continuum
+
 def findBestFitVeiling():
     """
         This procedure should find the best fit veiling and continuum values

@@ -45,7 +45,7 @@ def resample(x, y, R):
     normal = scipy.signal.convolve(const, yk, mode = 'valid')
 
     bm = numpy.isfinite(result)
-    return newx[int(len(xk)/2.0):-int(len(xk)/2.0)], result[bm]/normal[bm]
+    return numpy.array(newx[int(len(xk)/2.0):-int(len(xk)/2.0)]), numpy.array(result[bm]/normal[bm])
 
 def diff_spectra(x1, y1, x2, y2):
     '''
