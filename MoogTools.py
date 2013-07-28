@@ -404,9 +404,30 @@ class VALD_Line( Spectral_Line ):
         self.zeeman = {}
         self.zeeman["NOFIELD"] = [self.wl,self.loggf]
 
-class Goorvitch_CO_Line( Spectral_Line ):
+class Plez_CN_Line( Spectral_Line ):
     def __init__(self, line, **kwargs):
-        self.species = Goorvitch_dictionary.isotopes[
+        l = line.split()
+        self.wl = float(l[0])
+        self.species = float(l[1])
+        self.DissE = 7.72
+        self.expot_lo = float(l[2])
+        self.loggf = float(l[3])
+        self.VdW = None
+        self.radiative = None
+        self.stark = None
+        self.zeeman = {}
+        self.transition = None
+        self.J_lo = None
+        self.J_hi = None
+        self.g_lo = None
+        self.g_hi = None
+        self.g_eff = None
+        self.zeeman["NOFIELD"] [self.wl, self.loggf]
+
+        if "verbose" in kwargs:
+            self.verbose = kwargs["verbose"]
+        else:
+            self.verbose = False
 
 class HITRAN_Line( Spectral_Line ):
     def __init__(self, line, hitran_dictionary, **kwargs):
@@ -417,7 +438,7 @@ class HITRAN_Line( Spectral_Line ):
         self.wl = 10000.0/float(line[3:15])*10000.0
         print self.wl, line[3:15]
         raw_input()
-        self.expot_lo = 1.23986e-4*float(line[46:56])
+        self.expot_lo = 1.23986e-4*float(line[45:56])
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
         g_low = float(line[154:])
@@ -514,6 +535,17 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field):
 
     return lines
 
+def parse_Plez_CN(CN_file, wl_start, wl_stop, B_field):
+    
+    cn_in = open(CN_file, 'r')
+    lines = []
+    for line in cn_in:
+        current_line = Plez_CN_Line(line)
+        if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            lines.append(current_line)
+
+    return lines
+    
 def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None, 
         gravs=None, mode='gridstokes', strongLines=False, **kwargs):
     if mode=='gridstokes':
