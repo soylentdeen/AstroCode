@@ -422,7 +422,7 @@ class Plez_CN_Line( Spectral_Line ):
         self.g_lo = None
         self.g_hi = None
         self.g_eff = None
-        self.zeeman["NOFIELD"] [self.wl, self.loggf]
+        self.zeeman["NOFIELD"] = [self.wl, self.loggf]
 
         if "verbose" in kwargs:
             self.verbose = kwargs["verbose"]
@@ -435,9 +435,7 @@ class HITRAN_Line( Spectral_Line ):
         isotope_code = int(line[2])
         self.species = hitran_dictionary.isotopes[hitran_code][isotope_code]
         self.DissE = hitran_dictionary.DissE[hitran_code]
-        self.wl = 10000.0/float(line[3:15])*10000.0
-        print self.wl, line[3:15]
-        raw_input()
+        self.wl = 10000.0/float(line[3:15])*10000.0/1.000293
         self.expot_lo = 1.23986e-4*float(line[45:56])
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
@@ -523,7 +521,7 @@ def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield):
 
     return stronglines, weaklines
 
-def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field):
+def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, **kwargs):
 
     ht = HITRAN_Dictionary()
     hitran_in = open(HITRAN_file, 'r')
@@ -531,7 +529,13 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field):
     for line in hitran_in:
         current_line = HITRAN_Line(line, ht)
         if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
-            lines.append(current_line)
+            if "weedout" in kwargs:
+                if current_line.expot_lo < kwargs["weedout"]:
+                    lines.append(current_line)
+                else:
+                    print 'Tossed CO line!'
+            else:
+                lines.append(current_line)
 
     return lines
 
@@ -610,7 +614,7 @@ def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None,
 
     pf.write('synlimits\n')
     pf.write('               '+str(wl_start)+' '
-             +str(wl_stop)+' 0.01 1.50\n')
+             +str(wl_stop)+' 0.01 3.50\n')
     pf.write('plotpars       1\n')
     pf.write('               '+str(wl_start)+' '
              +str(wl_stop)+' 0.02 1.00\n')
