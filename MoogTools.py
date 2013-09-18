@@ -469,7 +469,7 @@ class HITRAN_Line( Spectral_Line ):
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
         g_low = float(line[154:])
-        self.loggf = numpy.log10(1.884e-15*self.wl**2*g_up*Einstein_A)
+        self.loggf = numpy.log10(1.884e-15*self.wl**2*g_low*Einstein_A)
         self.VdW = None
         self.radiative = None
         self.stark = None
