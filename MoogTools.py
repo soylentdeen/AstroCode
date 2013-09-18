@@ -464,7 +464,7 @@ class HITRAN_Line( Spectral_Line ):
         isotope_code = int(line[2])
         self.species = hitran_dictionary.isotopes[hitran_code][isotope_code]
         self.DissE = hitran_dictionary.DissE[hitran_code]
-        self.wl = 10000.0/float(line[3:15])*10000.0/1.000293
+        self.wl = 10000.0/float(line[3:15])*10000.0
         self.expot_lo = 1.23986e-4*float(line[45:56])
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
