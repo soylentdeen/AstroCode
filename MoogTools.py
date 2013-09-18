@@ -429,6 +429,35 @@ class Plez_CN_Line( Spectral_Line ):
         else:
             self.verbose = False
 
+class Goorvitch_CO_Line( Spectral_Line ):
+    def __init__(self, line, **kwargs):
+        l = line.split('|')
+        try:
+            self.wl = 1.0e8/float(l[0])
+            self.species = 0608.0+0.001*(10.0+float(l[10])/10)+0.0001*(10.0+float(l[10])%10)
+            self.DissE = 11.10
+            self.expot_lo = 1.23981e-4*float(l[3])
+            self.loggf = numpy.log10(float(l[4]))
+            self.VdW = None
+            self.radiative = None
+            self.stark = None
+            self.zeeman = {}
+            self.transition = None
+            self.J_lo = None
+            self.J_hi = None
+            self.g_lo = None
+            self.g_hi = None
+            self.g_eff = None
+            self.zeeman["NOFIELD"] = [self.wl, self.loggf]
+
+            if "verbose" in kwargs:
+                self.verbose = kwargs["verbose"]
+            else:
+                self.verbose = False
+
+        except:
+            self.wl = -99.9
+
 class HITRAN_Line( Spectral_Line ):
     def __init__(self, line, hitran_dictionary, **kwargs):
         hitran_code = int(line[0:2])
@@ -540,7 +569,6 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, **kwargs):
     return lines
 
 def parse_Plez_CN(CN_file, wl_start, wl_stop, B_field):
-    
     cn_in = open(CN_file, 'r')
     lines = []
     for line in cn_in:
@@ -549,7 +577,18 @@ def parse_Plez_CN(CN_file, wl_start, wl_stop, B_field):
             lines.append(current_line)
 
     return lines
-    
+
+def parse_Goorvitch_CO(CO_file, wl_start, wl_stop, B_field, **kwargs):
+    co_in = open(CO_file, 'r')
+    lines = []
+    for line in co_in:
+        current_line = Goorvitch_CO_Line(line)
+        if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            lines.append(current_line)
+
+    return lines
+
+
 def write_par_file(wl_start, wl_stop, stage_dir, b_dir, prefix, temps=None, 
         gravs=None, mode='gridstokes', strongLines=False, **kwargs):
     if mode=='gridstokes':
