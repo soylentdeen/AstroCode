@@ -73,7 +73,10 @@ def binSyntheticSpectrum(spectrum, native_wl, new_wl):
         denom = max(native_wl[bm]) - min(native_wl[bm])
         retval[-1] = num/denom
     else:
-        retval[-1] = spectrum[bm]
+        if len(bm) == 1:
+            retval[-1] = spectrum[bm]
+        else:
+            retval[-1] = spectrum[-1]
 
     return retval
 

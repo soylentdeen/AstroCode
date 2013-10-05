@@ -263,8 +263,10 @@ def spline_continuum(wa, fl, er, edges, minfrac=0.01, nsig=3.0,
             cond = m & ercond
             chfl = f[cond]
             chflgood = f[ercond]
-            if len(chflgood) == 0: continue
             #print len(chfl), len(chflgood)
+            #print asdf
+            #raw_input()
+            if len(chflgood) == 0: continue
             if float(len(chfl)) / len(chflgood) < minfrac:
                 f_cutoff = percentile(chflgood[ercond], minfrac)
                 cond = ercond & (f >= f_cutoff)

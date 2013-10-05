@@ -59,17 +59,17 @@ class Spectral_Line( object ):
                             out.write('%10.3f%10s%10.3f%10.5f' %
                                (self.zeeman["PI"][0][i],
                                self.species,self.expot_lo,self.zeeman["PI"][1][i]))
-                            if self.VdW == 0:
+                            if not(self.VdW):
                                 out.write('%20s%20.3f'% (' ',0.0))
                             else:
                                 out.write('%10.3f%20s%10.3f' %
                                         (self.VdW, ' ', 0.0))
-                            if self.radiative == 0:
+                            if not(self.radiative):
                                 out.write('%10.3s'% (' '))
                             else:
                                 out.write('%10.3f' %
                                         (self.radiative))
-                            if self.stark == 0:
+                            if not(self.stark):
                                 out.write('%10s\n'% (' '))
                             else:
                                 out.write('%10.3f\n' %
@@ -78,17 +78,17 @@ class Spectral_Line( object ):
                             out.write('%10.3f%10s%10.3f%10.5f' %
                                (self.zeeman["LCP"][0][i],
                                self.species,self.expot_lo,self.zeeman["LCP"][1][i]))
-                            if self.VdW == 0:
+                            if not(self.VdW):
                                 out.write('%20s%20.3f'% (' ',-1.0))
                             else:
                                 out.write('%10.3f%20s%10.3f' %
                                         (self.VdW, ' ', -1.0))
-                            if self.radiative == 0:
+                            if not(self.radiative):
                                 out.write('%10.3s'% (' '))
                             else:
                                 out.write('%10.3f' %
                                         (self.radiative))
-                            if self.stark == 0:
+                            if not(self.stark):
                                 out.write('%10s\n'% (' '))
                             else:
                                 out.write('%10.3f\n' %
@@ -97,17 +97,17 @@ class Spectral_Line( object ):
                             out.write('%10.3f%10s%10.3f%10.5f' %
                                (self.zeeman["RCP"][0][i],
                                self.species,self.expot_lo,self.zeeman["RCP"][1][i]))
-                            if self.VdW == 0:
+                            if not(self.VdW):
                                 out.write('%20s%20.3f'% (' ',1.0))
                             else:
                                 out.write('%10.3f%20s%10.3f' %
                                         (self.VdW, ' ', 1.0))
-                            if self.radiative == 0:
+                            if not(self.radiative):
                                 out.write('%10.3s'% (' '))
                             else:
                                 out.write('%10.3f' %
                                         (self.radiative))
-                            if self.stark == 0:
+                            if not(self.stark):
                                 out.write('%10s\n'% (' '))
                             else:
                                 out.write('%10.3f\n' %
@@ -337,6 +337,31 @@ class Spectral_Line( object ):
         self.lcp_transitions = lcp_transitions
         self.rcp_transitions = rcp_transitions
 
+class MOOG_Line( Spectral_Line ):
+    def __init__(self, line, **kwargs):
+        self.wl = float(line[0:11])
+        self.species = float(line[10:21])
+        self.element = numpy.round(self.species)
+        self.ionization = (self.species - self.element)*10.0
+        self.loggf = float(line[30:41])
+        self.expot_lo = float(line[20:31])
+        try:
+            self.VdW = float(line[40:51])
+        except:
+            self.VdW = None
+        try:
+            self.radiative = float(line[80:91])
+        except:
+            self.radiative = None
+        try:
+            self.stark = float(line[90:101])
+        except:
+            self.stark = None
+        try:
+            self.DissE = float(line[50:61])
+        except:
+            self.DissE = None
+
 class VALD_Line( Spectral_Line ):
     def __init__(self, line1, line2='', pt='', **kwargs):
         l1 = line1.split(',')
@@ -464,7 +489,7 @@ class HITRAN_Line( Spectral_Line ):
         isotope_code = int(line[2])
         self.species = hitran_dictionary.isotopes[hitran_code][isotope_code]
         self.DissE = hitran_dictionary.DissE[hitran_code]
-        self.wl = 10000.0/float(line[3:15])*10000.0
+        self.wl = 10000.0/float(line[3:15])*10000.0/1.000273
         self.expot_lo = 1.23986e-4*float(line[45:56])
         Einstein_A = float(line[26:35])
         g_up = float(line[145:154])
@@ -510,8 +535,31 @@ class Observed_Level( object ):
 
         self.mj = numpy.arange(self.J, (-1.0*self.J)-0.5, step = -1)
 
-def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield):
+def generate_CorrectedLines(original_files, new_files, outfile):
+    out = open(outfile, 'w')
+
+    outlines = []
+
+    for orig, new in zip(original_files, new_files):
+        with open(orig) as o, open(new) as n:
+            old_lines = o.readlines()
+            new_lines = n.readlines()
+
+            for ol, nl in zip(old_lines, new_lines):
+                if ol != nl:
+                    outlines.append(nl)
+
+    outlines.sort()
+    out.writelines(outlines)
+    out.close()
+
+def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield,
+        gf_corrections):
     pt = periodicTable()
+
+    corrected = []
+    for line in open(gf_corrections, 'r'):
+        corrected.append(MOOG_Line(line))
 
     strong = []
     for line in open(strong_file, 'r'):
@@ -532,6 +580,13 @@ def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield):
                 current_line = VALD_Line(l1, l2, pt)
                 wl = current_line.wl
                 if ( (wl > wl_start) & (wl < wl_stop) ):
+                    for cl in corrected:
+                        if (cl.wl == current_line.wl) & (cl.expot_lo ==
+                                current_line.expot_lo):
+                            current_line.loggf = cl.loggf
+                            current_line.VdW = cl.VdW
+                            current_line.stark = cl.stark
+                            current_line.radiative = cl.radiative
                     current_line.zeeman_splitting(Bfield)
                     species = current_line.species
                     if ( [wl, species] in strong):
@@ -539,18 +594,14 @@ def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield):
                     else:
                         weaklines.append(current_line)
 
-    """
-    mol_in = open(molecules, 'r')
-    for line in mol_in:
-        l = line.split()
-        wl = float(l[0])
-        if ( (wl > wl_start) & (wl < wl_stop) ):
-            weaklines.append(VALD_Line(line, MOL=True))
-    """
-
     return stronglines, weaklines
 
-def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, **kwargs):
+def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, 
+        gf_corrections, **kwargs):
+
+    corrected = []
+    for line in open(gf_corrections, 'r'):
+        corrected.append(MOOG_Line(line))
 
     ht = HITRAN_Dictionary()
     hitran_in = open(HITRAN_file, 'r')
@@ -558,6 +609,13 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, **kwargs):
     for line in hitran_in:
         current_line = HITRAN_Line(line, ht)
         if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            for cl in corrected:
+                if (cl.wl == current_line.wl) & (cl.expot_lo ==
+                         current_line.expot_lo):
+                    current_line.loggf = cl.loggf
+                    current_line.VdW = cl.VdW
+                    current_line.stark = cl.stark
+                    current_line.radiative = cl.radiative
             if "weedout" in kwargs:
                 if current_line.expot_lo < kwargs["weedout"]:
                     lines.append(current_line)
@@ -568,22 +626,48 @@ def parse_HITRAN(HITRAN_file, wl_start, wl_stop, B_field, **kwargs):
 
     return lines
 
-def parse_Plez_CN(CN_file, wl_start, wl_stop, B_field):
+def parse_Plez_CN(CN_file, wl_start, wl_stop, B_field, gf_corrections, 
+        **kwargs):
+
+    corrected = []
+    for line in open(gf_corrections, 'r'):
+        corrected.append(MOOG_Line(line))
+
     cn_in = open(CN_file, 'r')
     lines = []
     for line in cn_in:
         current_line = Plez_CN_Line(line)
         if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            for cl in corrected:
+                if (cl.wl == current_line.wl) & (cl.expot_lo ==
+                         current_line.expot_lo):
+                    current_line.loggf = cl.loggf
+                    current_line.VdW = cl.VdW
+                    current_line.stark = cl.stark
+                    current_line.radiative = cl.radiative
             lines.append(current_line)
 
     return lines
 
-def parse_Goorvitch_CO(CO_file, wl_start, wl_stop, B_field, **kwargs):
+def parse_Goorvitch_CO(CO_file, wl_start, wl_stop, B_field, gf_corrections,
+        **kwargs):
+
+    corrected = []
+    for line in open(gf_corrections, 'r'):
+        corrected.append(MOOG_Line(line))
+
     co_in = open(CO_file, 'r')
     lines = []
     for line in co_in:
         current_line = Goorvitch_CO_Line(line)
         if ( (current_line.wl > wl_start) & (current_line.wl < wl_stop) ):
+            for cl in corrected:
+                if (cl.wl == current_line.wl) & (cl.expot_lo ==
+                         current_line.expot_lo):
+                    current_line.loggf = cl.loggf
+                    current_line.VdW = cl.VdW
+                    current_line.stark = cl.stark
+                    current_line.radiative = cl.radiative
             lines.append(current_line)
 
     return lines
