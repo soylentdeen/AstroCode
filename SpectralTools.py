@@ -6,13 +6,15 @@ import numpy
 import pyfits
 import string
 
-def resample(x, y, R):
+def resample(x, y, R, nyquist=False):
     """
     This routine convolves a given spectrum to a resolution R
     :INPUTS:
         x: numpy array containing wavelengths
         y: numpy array containing fluxes
         R: Desired resolving power
+        nyquist (optional): returns a nyquist-sampled spectrum
+               (default: False)
 
     :RETURNS:
         new_x: new wavelength array
@@ -45,7 +47,52 @@ def resample(x, y, R):
     normal = scipy.signal.convolve(const, yk, mode = 'valid')
 
     bm = numpy.isfinite(result)
-    return numpy.array(newx[int(len(xk)/2.0):-int(len(xk)/2.0)]), numpy.array(result[bm]/normal[bm])
+    xvals = numpy.array(newx[int(len(xk)/2.0):-int(len(xk)/2.0)])
+    yvals = numpy.array(result[bm]/normal[bm])
+    if nyquist:
+        nyquistx = []
+        delta_x = min(xvals)/(2.0*R)
+        nyquistx.append(min(xvals)+delta_x)
+        while nyquistx[-1] < max(xvals)-delta_x:
+            delta_x = nyquistx[-1]/(2.0*R)
+            nyquistx.append(nyquistx[-1]+delta_x)
+        nyquistx = numpy.array(nyquistx)
+        nyquisty = binSpectrum(yvals, xvals, nyquistx)
+        retval = (nyquistx, nyquisty)
+    else:
+        retval = (xvals, yvals)
+
+    return retval
+
+def binSpectrum(spectrum, native_wl, new_wl):
+    """
+        This routine pixelates a synthetic spectrum, in effect simulating the 
+        discrete nature of detector pixels.
+    """
+    
+    retval = numpy.zeros(len(new_wl))
+    for i in range(len(new_wl)-1):
+        bm = scipy.where( (native_wl > new_wl[i]) & (
+            native_wl <= new_wl[i+1]))[0]
+        if (len(bm) > 1):
+            num=scipy.integrate.simps(spectrum[bm], x=native_wl[bm])
+            denom = max(native_wl[bm]) - min(native_wl[bm])
+            retval[i] = num/denom
+        elif (len(bm) == 1):
+            retval[i] = 0.0#native_wl[bm]
+        else:
+            retval[i] = 0.0#retval[-1]
+    bm = scipy.where(native_wl > new_wl[-1])[0]
+    if len(bm) > 1:
+        num = scipy.integrate.simps(spectrum[bm], x=native_wl[bm])
+        denom = max(native_wl[bm]) - min(native_wl[bm])
+        retval[-1] = num/denom
+    else:
+        if len(bm) == 1:
+            retval[-1] = spectrum[bm]
+        else:
+            retval[-1] = spectrum[-1]
+    return retval
 
 def diff_spectra(x1, y1, x2, y2):
     '''

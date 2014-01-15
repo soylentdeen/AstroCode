@@ -9,9 +9,10 @@ def findSpectrumShift(x, flat, x_sm, y_sm):
     This routine finds the wavelength and continuum shifts for a given
     wavelength window
     """
-    fig = pyplot.figure(0)
-    ax=fig.add_axes([0.1, 0.1, 0.8, 0.8])
-    window = scipy.where( (x > min(x_sm)) & (x < max(x_sm)) )[0]
+    #fig = pyplot.figure(0)
+    #ax=fig.add_axes([0.1, 0.1, 0.8, 0.8])
+    window = scipy.where( (x > min(x_sm)) & 
+            (x < max(x_sm)) )[0]
     feature_x = x[window]
     fine_x = numpy.linspace(min(feature_x), max(feature_x), num=len(feature_x)*10.0)
     model = scipy.interpolate.interpolate.interp1d(x_sm, y_sm, kind='linear',bounds_error = False)
@@ -22,13 +23,13 @@ def findSpectrumShift(x, flat, x_sm, y_sm):
     #fitfunc = lambda p,x: p[0]*scipy.exp(-(x-p[1])**2.0/(2.0*p[2]**2.0)) + p[3]
     #errfunc = lambda p,x,y: fitfunc(p,x) - y
 
-    x_zoom = xcorr[len(ycorr)/2 - 100: len(ycorr)/2+100]
-    y_zoom = ycorr[len(ycorr)/2 - 100: len(ycorr)/2+100]
+    x_zoom = xcorr[int(len(ycorr)*0.45): int(len(ycorr)*0.55)]
+    y_zoom = ycorr[int(len(ycorr)*0.45): int(len(ycorr)*0.55)]
     max_index = numpy.argsort(y_zoom)[-1]
     offset_computed = (x_zoom[max_index] - len(xcorr)/2.0)/10.0*(feature_x[1]-feature_x[0])
     #ax.plot(x_zoom, y_zoom)
+    #ax.plot(xcorr, ycorr)
     #fig.show()
-    #print wl_shift
     #raw_input()
 
     #p_guess = [ycorr[len(ycorr)/2], len(ycorr)/2, 3.0, 0.0001]
@@ -60,12 +61,14 @@ def binSyntheticSpectrum(spectrum, native_wl, new_wl):
     for i in range(len(new_wl)-1):
         bm = scipy.where( (native_wl > new_wl[i]) & (
             native_wl <= new_wl[i+1]))[0]
-        if (len(bm) > 0):
+        if (len(bm) > 1):
             num=scipy.integrate.simps(spectrum[bm], x=native_wl[bm])
             denom = max(native_wl[bm]) - min(native_wl[bm])
             retval[i] = num/denom
+        elif (len(bm) == 1):
+            retval[i] = 0.0#native_wl[bm]
         else:
-            retval[i] = retval[-1]
+            retval[i] = 0.0#retval[-1]
 
     bm = scipy.where(native_wl > new_wl[-1])[0]
     if len(bm) > 1:
