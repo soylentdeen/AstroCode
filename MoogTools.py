@@ -535,10 +535,12 @@ class Observed_Level( object ):
 
         self.mj = numpy.arange(self.J, (-1.0*self.J)-0.5, step = -1)
 
-def generate_CorrectedLines(original_files, new_files, outfile):
+def generate_CorrectedLines(original_files, new_files, outfile, compfile):
     out = open(outfile, 'w')
+    comp = open(compfile, 'w')
 
     outlines = []
+    complines = []
 
     for orig, new in zip(original_files, new_files):
         with open(orig) as o, open(new) as n:
@@ -548,10 +550,13 @@ def generate_CorrectedLines(original_files, new_files, outfile):
             for ol, nl in zip(old_lines, new_lines):
                 if ol != nl:
                     outlines.append(nl)
+                    complines.append(ol)
 
-    outlines.sort()
-    out.writelines(outlines)
+    order = numpy.argsort(outlines)
+    out.writelines(numpy.array(outlines)[order])
+    comp.writelines(numpy.array(complines)[order])
     out.close()
+    comp.close()
 
 def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield,
         gf_corrections):

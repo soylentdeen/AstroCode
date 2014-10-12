@@ -36,6 +36,9 @@ def resample(x, y, R, nyquist=False):
         stepsize = newx[-1]/(R*subsample)
         newx.append(newx[-1]+stepsize)
 
+    #xdouble = [xstart]
+    #while xdouble[-1] < xstop:
+
     f = scipy.interpolate.interpolate.interp1d(x, y, bounds_error=False)
     newy = f(newx)
     const = numpy.ones(len(newx))
@@ -121,6 +124,18 @@ def write_2col_spectrum(filename, wl, fl):
 
     data.close()
 
+def write_3col_spectrum(filename, wl, fl, er):
+    '''
+    Prints a spectrum to a three-column data file
+    '''
+
+    data = open(filename, 'w')
+
+    for line in zip(wl, fl, er):
+        data.write(str(line[0])+' '+str(line[1])+' '+str(line[2])+'\n')
+
+    data.close()
+
 def write_MOOG_obs_spectrum(filename, wl, fl):
     '''
     Prints a spectrum to a two-column data file in a format useful for the MOOG spectral synthesis program.
@@ -156,6 +171,32 @@ def read_2col_spectrum(filename):
     
     return x, y
 
+def read_3col_spectrum(filename):
+    '''
+    Reads in a spectrum from a text file in a 2 column format.
+
+    column 1: wavelength
+    column 2: flux
+    '''
+    data = open(filename).read().split('\n')
+    
+    x = []
+    y = []
+    z = []
+    
+    for line in data:
+        l = line.split()
+        if len(l) == 3:
+            x.append(float(l[0]))
+            y.append(float(l[1]))
+            z.append(float(l[2]))
+            
+    x = numpy.array(x)
+    y = numpy.array(y)
+    z = numpy.array(z)
+    
+    return x, y, z
+
 def read_fits_spectrum(filename):
     hdulist = pyfits.open(filename, ignore_missing_end=True)
     hdr = hdulist[0].header
@@ -181,8 +222,8 @@ def read_IRAF_fits_spectrum(filename):
 
     "Strings together the wavelength conversion strings"
     linear_header = ''
-    for tableEntry in waveTable:
-        linear_header += string.ljust(tableEntry.value, 68)
+    for tableEntry in waveTable.items():
+        linear_header += string.ljust(tableEntry[1], 68)
 
     """
     Extracts the coefficients necessary for the wavelength solution
@@ -198,9 +239,9 @@ def read_IRAF_fits_spectrum(filename):
     parallel array.
     """
     orders = []
-    for i in range(len(dat[0])):
-        wl = numpy.arange(len(dat[0][i]))*wlsol[i][1]+wlsol[i][0]
-        orders.append([wl, dat[0][i]])
+    for i in range(len(dat)):
+        wl = numpy.arange(len(dat[i]))*wlsol[i][1]+wlsol[i][0]
+        orders.append([wl, dat[i]])
 
     orders = numpy.array(orders)
     return hdr, orders
