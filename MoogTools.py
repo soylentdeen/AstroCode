@@ -3,7 +3,55 @@ import scipy.interpolate
 import numpy
 import os
 import SpectralTools
+import AstroUtils
 
+class Atmosphere( object ):
+    def __init__(self, df):
+        data = open(df, 'r')
+        junk = data.readline()
+        coords = data.readline().split()
+        self.Teff = int(coords[1][2:])
+        self.G = float(coords[2][2:])
+        self.F = float(coords[3][4:])
+        self.m = float(coords[4][3:])
+        self.nlayers = int(data.readline().split()[0])
+        self.tauref = numpy.zeros(self.nlayers)
+        self.T = numpy.zeros(self.nlayers)
+        self.Theta = numpy.zeros(self.nlayers)
+        self.Tkev = numpy.zeros(self.nlayers)
+        self.Tlog = numpy.zeros(self.nlayers)
+        self.pgas = numpy.zeros(self.nlayers)
+        self.ne = numpy.zeros(self.nlayers)
+        self.molweight = numpy.zeros(self.nlayers)
+        self.kaprefmass = numpy.zeros(self.nlayers)
+        self.rho = numpy.zeros(self.nlayers)
+        self.kapref = numpy.zeros(self.nlayers)
+        self.mt = 0.0
+
+        for i in range(self.nlayers):
+            layer = data.readline().split()
+            self.tauref[i] = float(layer[0])
+            self.T[i] = float(layer[1])
+            self.Theta[i] = 5040./self.T[i]
+            self.Tkev[i] = 8.6171e-5*self.T[i]
+            self.Tlog[i] = numpy.log10(self.T[i])
+            self.pgas[i] = float(layer[2])
+            self.ne[i] = float(layer[3])
+            self.molweight[i] = float(layer[4])
+            self.kaprefmass[i] = float(layer[5])
+            self.rho[i] = self.pgas[i]*self.molweight[i]*1.6606e-24/(1.38054e-16*self.  T[i])
+            self.kapref[i] = self.kaprefmass[i] * self.rho[i]
+        self.mt = float(data.readline().split()[0])
+        data.close()
+
+
+class parameterFile( object ):
+    def __init__(self, parfile, wlStart, wlStop, wlStep, mode='synth', 
+            strongLines=False, **kwargs):
+       self.parfile = parfile
+       self.wlStart = wlStart
+       self.wlStop = wlStop
+       self.mode = mode
 
 class periodicTable( object ):
     def __init__(self):
@@ -28,6 +76,84 @@ class HITRAN_Dictionary( object ):
         self.isotopes = {5:{1:608.01216,2:608.01316,3:608.01218,4:608.01217,5:608.01318,6:608.01317},
                 13:{1:108.01160,2:108.01180,3:108.02160}}
         self.DissE = {5:11.10, 13:4.412}
+
+
+class LineList( object ):
+    def __init__(self, configurationFile, wlStart, wlStop, Bfield, molecules=True):
+        # Load in configuration file
+        self.config = AstroUtils.parse_config(configurationFile)
+        self.weak_file = self.config['weak_file']
+        self.strong_file = self.config['strong_file']
+        self.molecules = self.config['molecules']
+        self.VALD_list = self.config['VALD_file']
+        self.gf_corrections = self.config['gf_file']
+        self.wlStart = wlStart
+        self.wlStop = wlStop
+        self.Bfield = Bfield
+        self.sfn = self.config['Strong_FileName']
+        self.wfn = self.config['Weak_FileName']
+
+        self.readInLineLists(molecules)
+        self.numLines = len(self.strongLines)+len(self.weakLines)
+
+    def readInLineLists(self, molecules =True):
+        self.strongLines, self.weakLines = parse_VALD(self.VALD_list,
+                self.strong_file, self.wlStart, self.wlStop, self.Bfield, 
+                self.gf_corrections)
+
+        if molecules:
+            #     CO
+            self.weakLines = numpy.append(self.weakLines, parse_HITRAN(
+               self.molecules+'05_HITEMP2010new.par', self.wlStart, self.wlStop,
+               self.Bfield, self.gf_corrections, weedout=2.5))
+            #     OH
+            self.weakLines = numpy.append(self.weakLines, parse_HITRAN(
+               self.molecules+'13_HITEMP2010.par', self.wlStart, self.wlStop,
+               self.Bfield, self.gf_corrections))
+
+            #     CN
+            self.weakLines = numpy.append(self.weakLines, parse_Plez_CN(
+               self.molecules+'CN_Plez_linelist.dat', self.wlStart, self.wlStop,
+               self.Bfield, self.gf_corrections))
+
+    def perturbLine(self, index, delta):
+        if index < len(self.strongLines):
+            self.strongLines[index].zeeman["NOFIELD"][1] += delta
+            self.writeLineLists()
+            self.strongLines[index].zeeman["NOFIELD"][1] -= delta
+        else:
+            self.weakLines[index-len(self.strongLines)].zeeman["NOFIELD"][1] += delta
+            self.writeLineLists()
+            self.weakLines[index-len(self.strongLines)].zeeman["NOFIELD"][1] -= delta
+
+    def writeLineLists(self):
+        outfile = open(self.sfn, 'w')
+        for strongLine in self.strongLines:
+            strongLine.dump(out=outfile, mode='MOOGSCALAR')
+        outfile.close()
+        self.sort_file(self.sfn)
+
+        outfile = open(self.wfn, 'w')
+        for weakLine in self.weakLines:
+            weakLine.dump(out=outfile, mode='MOOGSCALAR')
+        outfile.close()
+        self.sort_file(self.wfn, weak=True)
+    
+    def sort_file(self, name, weak=False):
+        data = open(name, 'r').readlines()
+        wl = []
+        for line in data:
+            wl.append(float(line[0:10]))
+
+        order = numpy.argsort(wl)
+        out = open(name, 'w')
+        if weak:
+            out.write("Weak Lines\n")
+        for i in order:
+            out.write(data[i])
+        out.close()
+
+
 
 
 class Spectral_Line( object ):
@@ -588,7 +714,9 @@ def parse_VALD(VALD_list, strong_file, wl_start, wl_stop, Bfield,
                     for cl in corrected:
                         if (cl.wl == current_line.wl) & (cl.expot_lo ==
                                 current_line.expot_lo):
+                            print "Making a correction!"
                             current_line.loggf = cl.loggf
+                            current_line.zeeman["NOFIELD"][1] = cl.loggf
                             current_line.VdW = cl.VdW
                             current_line.stark = cl.stark
                             current_line.radiative = cl.radiative
