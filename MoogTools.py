@@ -74,6 +74,31 @@ class Configuration( object ):
         self.config = AstroUtils.parse_config(configurationFile)
         self.lineList = LineList(self.config)
         self.parameterFile = ParameterFile(self.config)
+        self.solarSpectrum = Spectrum(self.config, 'solar')
+
+class Spectrum( object ):
+    def __init__(self, config, spectrumName):
+        self.name = spectrumName
+        self.df = config[spectrumName+'_datafile']
+        self.wlStart = config['wlStart']
+        self.wlStop = config['wlStop']
+        self.wave = []
+        self.flux = []
+        self.loadSpectrum()
+
+    def loadSpectrum(self):
+        spectrum=open(self.df, 'r').read().split('\n')
+        for line in spectrum:
+            if len(line) > 0:
+                l = line.split()
+                wave = float(l[0])
+                if ((wave > self.wlStart) & (wave <= self.wlStop)):
+                    self.wave.append(wave)
+                    self.flux.append(float(l[1]))
+
+        self.wave = numpy.array(self.wave)
+        self.flux = numpy.array(self.flux)
+
 
 #class Synth( Configuration ):
     
