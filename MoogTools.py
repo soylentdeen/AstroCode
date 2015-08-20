@@ -45,14 +45,6 @@ class Atmosphere( object ):
         data.close()
 
 
-class parameterFile( object ):
-    def __init__(self, parfile, wlStart, wlStop, wlStep, mode='synth', 
-            strongLines=False, **kwargs):
-       self.parfile = parfile
-       self.wlStart = wlStart
-       self.wlStop = wlStop
-       self.mode = mode
-
 class periodicTable( object ):
     def __init__(self):
         self.Zsymbol_table = {}
@@ -77,31 +69,86 @@ class HITRAN_Dictionary( object ):
                 13:{1:108.01160,2:108.01180,3:108.02160}}
         self.DissE = {5:11.10, 13:4.412}
 
+class Configuration( object ):
+    def __init__(self, configurationFile):
+        self.config = AstroUtils.parse_config(configurationFile)
+        self.lineList = LineList(self.config)
+        self.parameterFile = ParameterFile(self.config)
+
+#class Synth( Configuration ):
+    
+class ParameterFile( object ):
+    def __init__(self, config):
+        self.moogParCfgFile = config['moog_Parameters']
+        self.synlimits = (config['wlStart'], config['wlStop'], 0.01, 1.00)
+        self.moogPars = AstroUtils.parse_config(self.moogParCfgFile)
+        self.parFileName = self.moogPars['parFileName']
+        self.mode = self.moogPars['mode']
+        self.labels = {'terminal':'x11',
+                      'strong':1, 
+                      'atmosphere':1, 
+                      'molecules':2,
+                      'lines':1,
+                      'damping':1,
+                      'freeform':2,
+                      'flux/int':0,
+                      'diskflag':0}
+        self.file_labels = {'summary_out':'./Output/summary.out',
+                            'standard_out':'./Output/out1',
+                            'smoothed_out':'./Output/smoothed.out',
+                            'atmos_dir':'',
+                            'model_in':'',
+                            'lines_in':config['Weak_FileName'],
+                            'stronglines_in':config['Strong_FileName']}
+                            #'out_dir':'',
+        for l in self.labels:
+            if l in self.moogPars:
+                self.labels[l] = self.moogPars[l]
+            
+        for fl in self.file_labels:
+            if fl in self.moogPars:
+                self.file_labels[fl] = self.moogPars[fl]
+
+
+    def writeParFile(self):
+        pf = open(self.parFileName, 'w')
+
+        pf.write(self.mode+'\n')
+        for fl in self.file_labels:
+            pf.write(fl+'   \''+self.file_labels[fl]+'\'\n')
+        for l in self.labels:
+            pf.write(l+'    '+str(self.labels[l])+'\n')
+
+        pf.write('synlimits\n')
+        pf.write('               %.2f %.2f %.2f %.2f\n' % self.synlimits)
+        pf.close()
+        
+
 
 class LineList( object ):
-    def __init__(self, configurationFile, wlStart, wlStop, Bfield, molecules=True):
+    def __init__(self, config):
         # Load in configuration file
-        self.config = AstroUtils.parse_config(configurationFile)
-        self.weak_file = self.config['weak_file']
-        self.strong_file = self.config['strong_file']
-        self.molecules = self.config['molecules']
-        self.VALD_list = self.config['VALD_file']
-        self.gf_corrections = self.config['gf_file']
-        self.wlStart = wlStart
-        self.wlStop = wlStop
-        self.Bfield = Bfield
-        self.sfn = self.config['Strong_FileName']
-        self.wfn = self.config['Weak_FileName']
+        self.weak_file = config['weak_file']
+        self.strong_file = config['strong_file']
+        self.molecules = config['molecules']
+        self.VALD_list = config['VALD_file']
+        self.gf_corrections = config['gf_file']
+        self.wlStart = config['wlStart']
+        self.wlStop = config['wlStop']
+        self.Bfield = config['Bfield']
+        self.sfn = config['Strong_FileName']
+        self.wfn = config['Weak_FileName']
+        self.doMolecules = config['doMolecules']
 
-        self.readInLineLists(molecules)
+        self.readInLineLists()
         self.numLines = len(self.strongLines)+len(self.weakLines)
 
-    def readInLineLists(self, molecules =True):
+    def readInLineLists(self):
         self.strongLines, self.weakLines = parse_VALD(self.VALD_list,
                 self.strong_file, self.wlStart, self.wlStop, self.Bfield, 
                 self.gf_corrections)
 
-        if molecules:
+        if self.doMolecules:
             #     CO
             self.weakLines = numpy.append(self.weakLines, parse_HITRAN(
                self.molecules+'05_HITEMP2010new.par', self.wlStart, self.wlStop,
