@@ -6,6 +6,29 @@ import numpy
 import pyfits
 import string
 
+def fitSawtooth(y, window_len=50):
+    """
+    This routine tries to remove a sawtooth wave from the spectrum
+    """
+
+    s=numpy.r_[y[window_len-1:0:-1],y,y[-1:-window_len:-1]]
+    w = numpy.hanning(window_len)
+    newy=numpy.convolve(w/w.sum(),s,mode='valid')
+    newy=newy[(window_len/2-1):-(window_len/2)]
+    goodPoints = y > newy
+
+    fitfunc = lambda p, x : p[0]+p[1]*scipy.signal.sawtooth(2.*numpy.pi*p[2]*x + p[3])
+    errfunc = lambda p, x, y: numpy.abs(fitfunc(p,x) - y)[goodPoints]
+    coeffs = [numpy.mean(y), 0.04, 0.0002, 0.0]
+    x = numpy.arange(len(newy))
+    pfit, success = scipy.optimize.leastsq(errfunc, coeffs, args=(x,newy) )
+    print pfit, success
+    #raw_input()
+    retval = pfit[0]+pfit[1]*scipy.signal.sawtooth(2.*numpy.pi*pfit[2]*x + pfit[3])
+    #retval = 0.96-0.04*scipy.signal.sawtooth(2.*numpy.pi*0.0004*x + 0)
+    return (retval, newy, goodPoints)
+    
+
 def resample(x, y, R, nyquist=False):
     """
     This routine convolves a given spectrum to a resolution R

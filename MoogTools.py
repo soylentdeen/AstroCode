@@ -99,14 +99,54 @@ class Spectrum( object ):
         self.wave = numpy.array(self.wave)
         self.flux = numpy.array(self.flux)
 
+    def flipWavelength(self):
+        self.wave = self.wave[::-1]
+        self.flux = self.flux[::-1]
+
+    def fixDiscontinuities(self):
+        deriv = numpy.array([self.flux[i] - self.flux[i-1] for i in 
+            range(len(self.flux))])
+        candidates = numpy.arange(len(deriv))[deriv > 0.03]
+        score = deriv[candidates]/(deriv[candidates-1]+deriv[candidates+1]/2.0)
+        discontinuities = candidates[numpy.arange(
+            len(candidates))[numpy.abs(score) > 5]]
+        plus = numpy.abs(numpy.mean(self.flux[discontinuities] - 
+            self.flux[discontinuities+1]))
+        minus = numpy.abs(numpy.mean(self.flux[discontinuities] - 
+            self.flux[discontinuities-1]))
+
+        if plus > minus:
+            print asdf
+        else:
+            deltaY = self.flux[discontinuities] - self.flux[discontinuities-1]
+            deltaX = [self.wave[discontinuities[i]] - self.wave[discontinuities[i+1]] 
+                    for i in range(len(discontinuities)-1)]
+            slopes = deltaY[1:]/deltaX
+            slopes = numpy.append(numpy.append(numpy.average(slopes), slopes), numpy.
+                    average(slopes))
+            origins = numpy.append(self.wave[discontinuities[0]]+deltaY[0]/slopes[0],
+                    self.wave[discontinuities])
+
+            index = 0
+            discontinuities = numpy.append(discontinuities, len(self.flux))
+            for i in range(len(self.flux)):
+                if i == discontinuities[index]:
+                    index += 1
+                self.flux[i] = self.flux[i] + slopes[index] * (origins[index] - 
+                        self.wave[i])
+
+
+
+
 
 #class Synth( Configuration ):
     
 class ParameterFile( object ):
     def __init__(self, config):
         self.moogParCfgFile = config['moog_Parameters']
-        self.synlimits = (config['wlStart'], config['wlStop'], 0.01, 1.00)
         self.moogPars = AstroUtils.parse_config(self.moogParCfgFile)
+        self.synlimits = (config['wlStart'], config['wlStop'], 
+                self.moogPars['synlimits_c'], self.moogPars['synlimits_d'])
         self.parFileName = self.moogPars['parFileName']
         self.mode = self.moogPars['mode']
         self.labels = {'terminal':'x11',
@@ -145,7 +185,7 @@ class ParameterFile( object ):
             pf.write(l+'    '+str(self.labels[l])+'\n')
 
         pf.write('synlimits\n')
-        pf.write('               %.2f %.2f %.2f %.2f\n' % self.synlimits)
+        pf.write('               %.2f %.2f %.3f %.2f\n' % self.synlimits)
         pf.close()
         
 
